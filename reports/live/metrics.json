@@ -1,0 +1,464 @@
+{
+  "run": "live",
+  "profile": "live",
+  "dataset": "NSL-KDD",
+  "metadata": {
+    "dataset": "NSL-KDD",
+    "run": "live",
+    "classifier": "mlp",
+    "detector": "autoencoder",
+    "threshold_percentile": 99.0,
+    "candidate_thresholds": {
+      "95.0": 0.01752166149494872,
+      "99.0": 0.0520506227520005,
+      "99.5": 0.06752933699094911,
+      "99.9": 0.1372933430686461,
+      "99.99": 0.3201488980789539
+    },
+    "n_train": 100778,
+    "n_validation": 25195,
+    "n_features": 28,
+    "n_encoded_features": 109,
+    "train_classes": [
+      "DoS",
+      "Probe",
+      "R2L",
+      "U2R",
+      "normal"
+    ],
+    "trained_at": "2026-11-03 13:24:18",
+    "baseline_source": "NSL-KDD"
+  },
+  "validation": {
+    "classifier_comparison": {
+      "random_forest": {
+        "f1_macro": 0.9108,
+        "accuracy": 0.9987,
+        "detection_rate": 0.998,
+        "false_alarm_rate": 0.0006,
+        "train_seconds": 11.3
+      },
+      "hist_gradient_boosting": {
+        "f1_macro": 0.9002,
+        "accuracy": 0.9979,
+        "detection_rate": 0.999,
+        "false_alarm_rate": 0.0029,
+        "train_seconds": 12.2
+      },
+      "logistic_regression": {
+        "f1_macro": 0.687,
+        "accuracy": 0.9639,
+        "detection_rate": 0.9969,
+        "false_alarm_rate": 0.0639,
+        "train_seconds": 22.3
+      },
+      "mlp": {
+        "f1_macro": 0.9274,
+        "accuracy": 0.998,
+        "detection_rate": 0.9975,
+        "false_alarm_rate": 0.0015,
+        "train_seconds": 9.4
+      }
+    },
+    "detector_comparison": {
+      "isolation_forest": {
+        "roc_auc": 0.9784,
+        "detection_rate": 0.7979,
+        "false_alarm_rate": 0.01,
+        "threshold": 0.572487,
+        "train_seconds": 1.0
+      },
+      "autoencoder": {
+        "roc_auc": 0.9936,
+        "detection_rate": 0.8736,
+        "false_alarm_rate": 0.01,
+        "threshold": 0.052051,
+        "train_seconds": 9.4
+      }
+    }
+  },
+  "test": {
+    "KDDTest+": {
+      "n_samples": 22544,
+      "classifier_only": {
+        "accuracy": 0.7976,
+        "precision": 0.9673,
+        "detection_rate": 0.667,
+        "false_alarm_rate": 0.0298,
+        "f1": 0.7895,
+        "tp": 8559,
+        "fp": 289,
+        "tn": 9422,
+        "fn": 4274,
+        "roc_auc": 0.8863
+      },
+      "anomaly_only": {
+        "accuracy": 0.7913,
+        "precision": 0.9642,
+        "detection_rate": 0.6577,
+        "false_alarm_rate": 0.0322,
+        "f1": 0.782,
+        "tp": 8440,
+        "fp": 313,
+        "tn": 9398,
+        "fn": 4393,
+        "roc_auc": 0.9593
+      },
+      "hybrid": {
+        "accuracy": 0.8593,
+        "precision": 0.9653,
+        "detection_rate": 0.7809,
+        "false_alarm_rate": 0.0371,
+        "f1": 0.8634,
+        "tp": 10021,
+        "fp": 360,
+        "tn": 9351,
+        "fn": 2812
+      },
+      "multiclass": {
+        "accuracy": 0.7882,
+        "f1_macro": 0.5445,
+        "f1_weighted": 0.758,
+        "per_class": {
+          "normal": {
+            "precision": 0.6879380841121495,
+            "recall": 0.9702399340953558,
+            "f1-score": 0.8050583158884095,
+            "support": 9711.0
+          },
+          "DoS": {
+            "precision": 0.9640439295922972,
+            "recall": 0.8589812332439678,
+            "f1-score": 0.908485149216701,
+            "support": 7460.0
+          },
+          "Probe": {
+            "precision": 0.8618533257532689,
+            "recall": 0.6261875258157786,
+            "f1-score": 0.7253588516746412,
+            "support": 2421.0
+          },
+          "R2L": {
+            "precision": 0.9613636363636363,
+            "recall": 0.1466204506065858,
+            "f1-score": 0.2544360902255639,
+            "support": 2885.0
+          },
+          "U2R": {
+            "precision": 0.5,
+            "recall": 0.014925373134328358,
+            "f1-score": 0.028985507246376812,
+            "support": 67.0
+          },
+          "accuracy": 0.788236337828247,
+          "macro avg": {
+            "precision": 0.7950397951642704,
+            "recall": 0.5233909033792032,
+            "f1-score": 0.5444647828503385,
+            "support": 22544.0
+          },
+          "weighted avg": {
+            "precision": 0.8324128567303661,
+            "recall": 0.788236337828247,
+            "f1-score": 0.7579535329994455,
+            "support": 22544.0
+          }
+        }
+      },
+      "detection_rate_by_category": {
+        "classifier_only": {
+          "DoS": 0.8641,
+          "Probe": 0.6923,
+          "R2L": 0.1497,
+          "U2R": 0.0746,
+          "normal": 0.0298
+        },
+        "hybrid": {
+          "DoS": 0.9572,
+          "Probe": 0.9637,
+          "R2L": 0.1844,
+          "U2R": 0.2239,
+          "normal": 0.0371
+        }
+      },
+      "novel_attacks": {
+        "n_samples": 3750,
+        "attack_types": [
+          "apache2",
+          "httptunnel",
+          "mailbomb",
+          "mscan",
+          "named",
+          "processtable",
+          "ps",
+          "saint",
+          "sendmail",
+          "snmpgetattack",
+          "snmpguess",
+          "sqlattack",
+          "udpstorm",
+          "worm",
+          "xlock",
+          "xsnoop",
+          "xterm"
+        ],
+        "classifier_only_dr": 0.3445,
+        "anomaly_only_dr": 0.6931,
+        "hybrid_dr": 0.716
+      },
+      "threshold_sensitivity": [
+        {
+          "percentile": 95.0,
+          "threshold": 0.017522,
+          "detection_rate": 0.8896,
+          "false_alarm_rate": 0.1128,
+          "precision": 0.9125,
+          "f1": 0.9009,
+          "novel_dr": 0.8195
+        },
+        {
+          "percentile": 99.0,
+          "threshold": 0.052051,
+          "detection_rate": 0.7809,
+          "false_alarm_rate": 0.0371,
+          "precision": 0.9653,
+          "f1": 0.8634,
+          "novel_dr": 0.716
+        },
+        {
+          "percentile": 99.5,
+          "threshold": 0.067529,
+          "detection_rate": 0.7578,
+          "false_alarm_rate": 0.0343,
+          "precision": 0.9669,
+          "f1": 0.8497,
+          "novel_dr": 0.6453
+        },
+        {
+          "percentile": 99.9,
+          "threshold": 0.137293,
+          "detection_rate": 0.709,
+          "false_alarm_rate": 0.0304,
+          "precision": 0.9686,
+          "f1": 0.8187,
+          "novel_dr": 0.4872
+        },
+        {
+          "percentile": 99.99,
+          "threshold": 0.320149,
+          "detection_rate": 0.6761,
+          "false_alarm_rate": 0.0298,
+          "precision": 0.9678,
+          "f1": 0.796,
+          "novel_dr": 0.3755
+        }
+      ]
+    },
+    "KDDTest-21": {
+      "n_samples": 11850,
+      "classifier_only": {
+        "accuracy": 0.6151,
+        "precision": 0.9497,
+        "detection_rate": 0.5593,
+        "false_alarm_rate": 0.1334,
+        "f1": 0.704,
+        "tp": 5424,
+        "fp": 287,
+        "tn": 1865,
+        "fn": 4274,
+        "roc_auc": 0.7319
+      },
+      "anomaly_only": {
+        "accuracy": 0.6068,
+        "precision": 0.9462,
+        "detection_rate": 0.5509,
+        "false_alarm_rate": 0.1413,
+        "f1": 0.6964,
+        "tp": 5343,
+        "fp": 304,
+        "tn": 1848,
+        "fn": 4355,
+        "roc_auc": 0.8052
+      },
+      "hybrid": {
+        "accuracy": 0.7332,
+        "precision": 0.9518,
+        "detection_rate": 0.71,
+        "false_alarm_rate": 0.1622,
+        "f1": 0.8133,
+        "tp": 6886,
+        "fp": 349,
+        "tn": 1803,
+        "fn": 2812
+      },
+      "multiclass": {
+        "accuracy": 0.5973,
+        "f1_macro": 0.4585,
+        "f1_weighted": 0.5969,
+        "per_class": {
+          "normal": {
+            "precision": 0.30379540641798336,
+            "recall": 0.866635687732342,
+            "f1-score": 0.4498854179230491,
+            "support": 2152.0
+          },
+          "DoS": {
+            "precision": 0.9323137921268763,
+            "recall": 0.7578268876611418,
+            "f1-score": 0.8360634920634921,
+            "support": 4344.0
+          },
+          "Probe": {
+            "precision": 0.8613348676639816,
+            "recall": 0.6232306411323897,
+            "f1-score": 0.7231884057971014,
+            "support": 2402.0
+          },
+          "R2L": {
+            "precision": 0.9613636363636363,
+            "recall": 0.1466204506065858,
+            "f1-score": 0.2544360902255639,
+            "support": 2885.0
+          },
+          "U2R": {
+            "precision": 0.5,
+            "recall": 0.014925373134328358,
+            "f1-score": 0.028985507246376812,
+            "support": 67.0
+          },
+          "accuracy": 0.5972995780590717,
+          "macro avg": {
+            "precision": 0.7117615405144956,
+            "recall": 0.48184780805335753,
+            "f1-score": 0.45851178265111675,
+            "support": 11850.0
+          },
+          "weighted avg": {
+            "precision": 0.8084134405610655,
+            "recall": 0.5972995780590717,
+            "f1-score": 0.5968862387261695,
+            "support": 11850.0
+          }
+        }
+      },
+      "detection_rate_by_category": {
+        "classifier_only": {
+          "DoS": 0.7666,
+          "Probe": 0.6898,
+          "R2L": 0.1497,
+          "U2R": 0.0746,
+          "normal": 0.1334
+        },
+        "hybrid": {
+          "DoS": 0.9266,
+          "Probe": 0.9634,
+          "R2L": 0.1844,
+          "U2R": 0.2239,
+          "normal": 0.1622
+        }
+      },
+      "novel_attacks": {
+        "n_samples": 3740,
+        "attack_types": [
+          "apache2",
+          "httptunnel",
+          "mailbomb",
+          "mscan",
+          "named",
+          "processtable",
+          "ps",
+          "saint",
+          "sendmail",
+          "snmpgetattack",
+          "snmpguess",
+          "sqlattack",
+          "udpstorm",
+          "worm",
+          "xlock",
+          "xsnoop",
+          "xterm"
+        ],
+        "classifier_only_dr": 0.3428,
+        "anomaly_only_dr": 0.6922,
+        "hybrid_dr": 0.7152
+      },
+      "threshold_sensitivity": [
+        {
+          "percentile": 95.0,
+          "threshold": 0.017522,
+          "detection_rate": 0.8539,
+          "false_alarm_rate": 0.4568,
+          "precision": 0.8939,
+          "f1": 0.8734,
+          "novel_dr": 0.819
+        },
+        {
+          "percentile": 99.0,
+          "threshold": 0.052051,
+          "detection_rate": 0.71,
+          "false_alarm_rate": 0.1622,
+          "precision": 0.9518,
+          "f1": 0.8133,
+          "novel_dr": 0.7152
+        },
+        {
+          "percentile": 99.5,
+          "threshold": 0.067529,
+          "detection_rate": 0.6795,
+          "false_alarm_rate": 0.1515,
+          "precision": 0.9529,
+          "f1": 0.7933,
+          "novel_dr": 0.6444
+        },
+        {
+          "percentile": 99.9,
+          "threshold": 0.137293,
+          "detection_rate": 0.615,
+          "false_alarm_rate": 0.1362,
+          "precision": 0.9532,
+          "f1": 0.7476,
+          "novel_dr": 0.4858
+        },
+        {
+          "percentile": 99.99,
+          "threshold": 0.320149,
+          "detection_rate": 0.5714,
+          "false_alarm_rate": 0.1334,
+          "precision": 0.9508,
+          "f1": 0.7138,
+          "novel_dr": 0.3738
+        }
+      ]
+    }
+  },
+  "feature_importance": {
+    "src_bytes": 0.07851,
+    "service": 0.04948,
+    "dst_host_rerror_rate": 0.03113,
+    "dst_host_srv_count": 0.02025,
+    "dst_host_same_src_port_rate": 0.01961,
+    "dst_host_srv_diff_host_rate": 0.01866,
+    "diff_srv_rate": 0.01707,
+    "srv_count": 0.01569,
+    "dst_host_count": 0.01469,
+    "rerror_rate": 0.00966,
+    "dst_host_same_srv_rate": 0.00961,
+    "duration": 0.00873,
+    "same_srv_rate": 0.0063,
+    "flag": 0.0052,
+    "protocol_type": 0.00441,
+    "wrong_fragment": 0.00342,
+    "serror_rate": 0.00248,
+    "count": 0.00196,
+    "srv_rerror_rate": 0.00081,
+    "land": 0.0,
+    "dst_host_serror_rate": -0.0007,
+    "dst_host_srv_rerror_rate": -0.00072,
+    "srv_serror_rate": -0.00089,
+    "dst_host_diff_srv_rate": -0.00131,
+    "dst_host_srv_serror_rate": -0.00219,
+    "dst_bytes": -0.00665,
+    "srv_diff_host_rate": -0.01147,
+    "urgent": -0.02885
+  }
+}
