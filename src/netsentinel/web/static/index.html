@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NetSentinel</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Cpath d='M2 12h2V7h2v5h2V4h2v8h2V9h2v3' stroke='%235fd4ff' fill='none' stroke-width='1.5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="wordmark" href="#tape" aria-label="NetSentinel home">netsentinel</a>
+    <nav aria-label="Sections">
+      <a href="#tape">Tape</a>
+      <a href="#how">How it decides</a>
+      <a href="#results">Results</a>
+      <a href="#analyze">Analyze</a>
+      <a href="#live">Live</a>
+      <a href="#lab">Lab</a>
+    </nav>
+    <p class="status" id="status">Connecting to the detector…</p>
+  </header>
+
+  <main>
+    <!-- ================================================================ HERO / TAPE -->
+    <section id="tape" class="frame hero">
+      <div class="hero-copy">
+        <h1>One layer knows the attacks.<br>The other knows your network.</h1>
+        <p class="ar" lang="ar" dir="rtl">
+          نظام هجين لكشف التسلّل: مصنِّف يتعرّف على الهجمات المعروفة، وكاشف شذوذ تعلّم شكل الحركة الطبيعية
+          فقط — فيلتقط ما لم يره المصنِّف قط. الشريط أدناه يعيد تشغيل حزم حقيقية التقطناها من جهازنا.
+        </p>
+      </div>
+
+      <div class="tape-head">
+        <div class="tape-source">
+          <label for="tape-sample">Capture</label>
+          <select id="tape-sample"></select>
+        </div>
+        <div class="tape-controls">
+          <button id="tape-play" class="btn" type="button">Pause</button>
+          <label for="tape-speed">Speed</label>
+          <select id="tape-speed">
+            <option value="2">2×</option>
+            <option value="6" selected>6×</option>
+            <option value="15">15×</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="tape-wrap">
+        <canvas id="tape-canvas" aria-label="Live replay of connections: height is anomaly score, colour is the verdict" role="img"></canvas>
+        <ul class="legend" aria-label="Legend">
+          <li><i class="sw normal"></i>normal</li>
+          <li><i class="sw probe"></i>scan / probe</li>
+          <li><i class="sw attack"></i>known attack</li>
+          <li><i class="sw unknown"></i>unknown anomaly — the classifier never saw it</li>
+          <li><i class="sw threshold"></i>anomaly threshold</li>
+        </ul>
+      </div>
+
+      <div class="tape-stats">
+        <div class="stat"><span class="stat-n" id="s-conn">0</span><span class="stat-l">connections</span></div>
+        <div class="stat"><span class="stat-n" id="s-alert">0</span><span class="stat-l">alerts</span></div>
+        <div class="stat probe"><span class="stat-n" id="s-probe">0</span><span class="stat-l">scan / probe</span></div>
+        <div class="stat unknown"><span class="stat-n" id="s-unknown">0</span><span class="stat-l">unknown anomaly</span></div>
+        <div class="stat"><span class="stat-n" id="s-time">0.0s</span><span class="stat-l">capture time</span></div>
+      </div>
+
+      <div class="feed-wrap">
+        <h2 class="cell-title">Incidents as they happen</h2>
+        <ol class="feed" id="tape-feed" aria-live="polite"></ol>
+      </div>
+    </section>
+
+    <!-- ================================================================ HOW IT DECIDES -->
+    <section id="how" class="frame">
+      <div class="section-head">
+        <h2>How it decides</h2>
+        <p class="ar" lang="ar" dir="rtl">
+          رحلة كل اتصال من الحزمة الخام إلى التنبيه. الخطوتان المعلَّمتان باللون السماوي هما تعلّم الآلة.
+        </p>
+      </div>
+      <ol class="pipeline">
+        <li>
+          <span class="kind">capture</span>
+          <h3>Packets become connections</h3>
+          <p>نجمع الحزم حسب (المصدر، الهدف، المنفذ، البروتوكول) ونحدّد حالة TCP لكل اتصال: <b>SF</b> مكتمل، <b>S0</b> بلا رد، <b>REJ</b> مرفوض.</p>
+        </li>
+        <li>
+          <span class="kind">features</span>
+          <h3>28 numbers per connection</h3>
+          <p>الحجم والمدة والحالة، و"ذاكرة" الماضي القريب: كم اتصالاً لنفس الهدف خلال آخر ثانيتين؟ كم منها فشل؟</p>
+        </li>
+        <li class="ml">
+          <span class="kind">machine learning — supervised</span>
+          <h3>Classifier names known attacks</h3>
+          <p><b>شبكة عصبية MLP</b> (وRandom Forest للملف الكامل) تدرّبت على 100 ألف اتصال مُسمّى، فتعطي: DoS أو Probe أو R2L أو U2R أو طبيعي، مع نسبة ثقة.</p>
+        </li>
+        <li class="ml">
+          <span class="kind">machine learning — unsupervised</span>
+          <h3>Autoencoder knows "normal"</h3>
+          <p><b>شبكة Autoencoder</b> تدرّبت على الحركة الطبيعية فقط: تضغط الاتصال ثم تعيد بناءه. إذا فشلت في إعادة بنائه فهو غريب — حتى لو لم يُرَ هجوم مثله قط.</p>
+        </li>
+        <li>
+          <span class="kind">decision</span>
+          <h3>Fuse, explain, alert</h3>
+          <p>إذا قال المصنِّف "هجوم" نعتمد تسميته. إذا قال "طبيعي" والـ Autoencoder قال "غريب" ← <b>Unknown-Anomaly</b>. ثم نشرح السبب بالعربية.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ================================================================ RESULTS -->
+    <section id="results" class="frame">
+      <div class="section-head">
+        <h2>Results</h2>
+        <p class="ar" lang="ar" dir="rtl">
+          كل رقم هنا من اختبار على بيانات لم يرها النظام أثناء التدريب — مثل الـ backtest. اختر التجربة:
+        </p>
+      </div>
+      <div class="tabs" role="tablist" id="run-tabs"></div>
+      <p class="run-note ar" lang="ar" dir="rtl" id="run-note"></p>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="grid-2">
+        <figure class="cell">
+          <figcaption class="cell-title">Detection rate by mode</figcaption>
+          <div id="chart-modes"></div>
+        </figure>
+        <figure class="cell">
+          <figcaption class="cell-title" id="novel-title">Attacks never seen in training</figcaption>
+          <div id="chart-novel"></div>
+        </figure>
+      </div>
+      <div class="grid-2">
+        <figure class="cell">
+          <figcaption class="cell-title">Detection per attack family — classifier vs hybrid</figcaption>
+          <div id="chart-cats"></div>
+        </figure>
+        <figure class="cell">
+          <figcaption class="cell-title">Threshold trade-off — detection vs false alarms</figcaption>
+          <div id="chart-threshold"></div>
+        </figure>
+      </div>
+      <figure class="cell wide">
+        <figcaption class="cell-title">Which classifier won (validation set)</figcaption>
+        <div id="table-models"></div>
+      </figure>
+    </section>
+
+    <!-- ================================================================ ANALYZE -->
+    <section id="analyze" class="frame">
+      <div class="section-head">
+        <h2>Analyze a capture</h2>
+        <p class="ar" lang="ar" dir="rtl">
+          حلّل ملف حزم كاملاً (من Wireshark أو tcpdump): اختر ملفاً جاهزاً أو ارفع ملفك.
+        </p>
+      </div>
+      <div class="analyze-controls">
+        <div class="samples" id="samples"></div>
+        <label class="drop" id="drop">
+          <input type="file" id="upload" accept=".pcap,.pcapng">
+          <span>Drop a .pcap here, or choose a file</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="use-baseline" checked>
+          <span>Use the baseline learned from this machine's normal traffic</span>
+        </label>
+      </div>
+      <div id="analyze-out" class="analyze-out" aria-live="polite"></div>
+    </section>
+
+    <!-- ================================================================ LIVE -->
+    <section id="live" class="frame">
+      <div class="section-head">
+        <h2>Live capture</h2>
+        <p class="ar" lang="ar" dir="rtl">
+          مراقبة حيّة لكرت الشبكة، مع "ميدان هجوم": أزرار تُطلق هجمات حقيقية (nmap و HTTP flood) على هذا الجهاز فقط،
+          لتشاهد النظام يكشفها لحظة حدوثها.
+        </p>
+      </div>
+      <div id="live-body"></div>
+      <ol class="feed" id="live-feed" aria-live="polite"></ol>
+    </section>
+
+    <!-- ================================================================ LAB -->
+    <section id="lab" class="frame">
+      <div class="section-head">
+        <h2>Lab</h2>
+        <p class="ar" lang="ar" dir="rtl">
+          غيّر خصائص اتصال واحد وشاهد قرار النظام فوراً — لفهم ما تعلّمه النموذج.
+        </p>
+      </div>
+      <div class="lab">
+        <div class="lab-inputs">
+          <div class="presets" id="lab-presets"></div>
+          <div id="lab-controls"></div>
+        </div>
+        <div class="lab-verdict" id="lab-verdict" aria-live="polite"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="frame footer">
+    <p>Trained and tested on NSL-KDD (UNB, 2009) and CIC-IDS2017 (UNB, 2017), and on packet captures recorded on this machine.
+      Everything runs offline.</p>
+  </footer>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

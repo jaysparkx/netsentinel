@@ -1,0 +1,339 @@
+{
+  "run": "cicids2017_random",
+  "profile": "cicids2017_random",
+  "dataset": "CIC-IDS2017",
+  "metadata": {
+    "dataset": "CIC-IDS2017",
+    "run": "cicids2017_random",
+    "classifier": "random_forest",
+    "detector": "autoencoder",
+    "threshold_percentile": 99.0,
+    "candidate_thresholds": {
+      "95.0": 0.07242888957262039,
+      "99.0": 0.17020739614963531,
+      "99.5": 0.23277078568935394,
+      "99.9": 0.5010983943939209,
+      "99.99": 1.231351613998413
+    },
+    "n_train": 299953,
+    "n_validation": 74989,
+    "n_features": 68,
+    "n_encoded_features": 68,
+    "train_classes": [
+      "Bot",
+      "BruteForce",
+      "DDoS",
+      "DoS",
+      "Heartbleed",
+      "Infiltration",
+      "PortScan",
+      "WebAttack",
+      "normal"
+    ],
+    "trained_at": "2026-11-03 13:13:02",
+    "baseline_source": "CIC-IDS2017"
+  },
+  "validation": {
+    "classifier_comparison": {
+      "random_forest": {
+        "f1_macro": 0.9835,
+        "accuracy": 0.9977,
+        "detection_rate": 0.9958,
+        "false_alarm_rate": 0.0012,
+        "train_seconds": 233.5
+      },
+      "hist_gradient_boosting": {
+        "f1_macro": 0.9668,
+        "accuracy": 0.9967,
+        "detection_rate": 0.9991,
+        "false_alarm_rate": 0.0042,
+        "train_seconds": 39.0
+      },
+      "logistic_regression": {
+        "f1_macro": 0.6446,
+        "accuracy": 0.9166,
+        "detection_rate": 0.9918,
+        "false_alarm_rate": 0.1171,
+        "train_seconds": 34.1
+      },
+      "mlp": {
+        "f1_macro": 0.9733,
+        "accuracy": 0.9963,
+        "detection_rate": 0.9929,
+        "false_alarm_rate": 0.0017,
+        "train_seconds": 33.9
+      }
+    },
+    "detector_comparison": {
+      "isolation_forest": {
+        "roc_auc": 0.9092,
+        "detection_rate": 0.0245,
+        "false_alarm_rate": 0.01,
+        "threshold": 0.621556,
+        "train_seconds": 3.8
+      },
+      "autoencoder": {
+        "roc_auc": 0.968,
+        "detection_rate": 0.6026,
+        "false_alarm_rate": 0.01,
+        "threshold": 0.170207,
+        "train_seconds": 57.8
+      }
+    }
+  },
+  "test": {
+    "test": {
+      "n_samples": 669950,
+      "classifier_only": {
+        "accuracy": 0.9985,
+        "precision": 0.9932,
+        "detection_rate": 0.9966,
+        "false_alarm_rate": 0.0012,
+        "f1": 0.9949,
+        "tp": 100606,
+        "fp": 692,
+        "tn": 568310,
+        "fn": 342,
+        "roc_auc": 0.9999
+      },
+      "anomaly_only": {
+        "accuracy": 0.9402,
+        "precision": 0.9262,
+        "detection_rate": 0.6551,
+        "false_alarm_rate": 0.0093,
+        "f1": 0.7674,
+        "tp": 66134,
+        "fp": 5267,
+        "tn": 563735,
+        "fn": 34814,
+        "roc_auc": 0.9743
+      },
+      "hybrid": {
+        "accuracy": 0.9908,
+        "precision": 0.9449,
+        "detection_rate": 0.9968,
+        "false_alarm_rate": 0.0103,
+        "f1": 0.9702,
+        "tp": 100625,
+        "fp": 5863,
+        "tn": 563139,
+        "fn": 323
+      },
+      "multiclass": {
+        "accuracy": 0.9984,
+        "f1_macro": 0.9043,
+        "f1_weighted": 0.9985,
+        "per_class": {
+          "normal": {
+            "precision": 0.9993985776889908,
+            "recall": 0.9987838355576958,
+            "f1-score": 0.9990911120604331,
+            "support": 569002.0
+          },
+          "DoS": {
+            "precision": 0.9938915579958819,
+            "recall": 0.9965590805863327,
+            "f1-score": 0.9952235318373939,
+            "support": 58124.0
+          },
+          "DDoS": {
+            "precision": 0.99919283445295,
+            "recall": 0.9992448703260077,
+            "f1-score": 0.9992188517120166,
+            "support": 38404.0
+          },
+          "PortScan": {
+            "precision": 0.9258649093904449,
+            "recall": 0.9574105621805792,
+            "f1-score": 0.9413735343383585,
+            "support": 587.0
+          },
+          "BruteForce": {
+            "precision": 0.9945054945054945,
+            "recall": 0.9890710382513661,
+            "f1-score": 0.9917808219178083,
+            "support": 2745.0
+          },
+          "WebAttack": {
+            "precision": 0.9855769230769231,
+            "recall": 0.9564541213063764,
+            "f1-score": 0.9707971586424625,
+            "support": 643.0
+          },
+          "Bot": {
+            "precision": 0.5792778649921507,
+            "recall": 0.8561484918793504,
+            "f1-score": 0.6910112359550562,
+            "support": 431.0
+          },
+          "Infiltration": {
+            "precision": 0.8888888888888888,
+            "recall": 0.7272727272727273,
+            "f1-score": 0.8,
+            "support": 11.0
+          },
+          "Heartbleed": {
+            "precision": 0.6,
+            "recall": 1.0,
+            "f1-score": 0.75,
+            "support": 3.0
+          },
+          "accuracy": 0.9984043585342189,
+          "macro avg": {
+            "precision": 0.8851774501101917,
+            "recall": 0.9423271919289373,
+            "f1-score": 0.9042773607181699,
+            "support": 669950.0
+          },
+          "weighted avg": {
+            "precision": 0.9985373786354692,
+            "recall": 0.9984043585342189,
+            "f1-score": 0.9984526268031948,
+            "support": 669950.0
+          }
+        }
+      },
+      "detection_rate_by_category": {
+        "classifier_only": {
+          "Bot": 0.8561,
+          "BruteForce": 0.9898,
+          "DDoS": 0.9994,
+          "DoS": 0.9967,
+          "Heartbleed": 1.0,
+          "Infiltration": 0.7273,
+          "PortScan": 0.9898,
+          "WebAttack": 0.9596,
+          "normal": 0.0012
+        },
+        "hybrid": {
+          "Bot": 0.8561,
+          "BruteForce": 0.9902,
+          "DDoS": 0.9995,
+          "DoS": 0.9968,
+          "Heartbleed": 1.0,
+          "Infiltration": 0.9091,
+          "PortScan": 0.9915,
+          "WebAttack": 0.9596,
+          "normal": 0.0103
+        }
+      },
+      "threshold_sensitivity": [
+        {
+          "percentile": 95.0,
+          "threshold": 0.072429,
+          "detection_rate": 0.9969,
+          "false_alarm_rate": 0.0503,
+          "precision": 0.7787,
+          "f1": 0.8744,
+          "novel_dr": null
+        },
+        {
+          "percentile": 99.0,
+          "threshold": 0.170207,
+          "detection_rate": 0.9968,
+          "false_alarm_rate": 0.0103,
+          "precision": 0.9449,
+          "f1": 0.9702,
+          "novel_dr": null
+        },
+        {
+          "percentile": 99.5,
+          "threshold": 0.232771,
+          "detection_rate": 0.9967,
+          "false_alarm_rate": 0.0059,
+          "precision": 0.9678,
+          "f1": 0.982,
+          "novel_dr": null
+        },
+        {
+          "percentile": 99.9,
+          "threshold": 0.501098,
+          "detection_rate": 0.9966,
+          "false_alarm_rate": 0.0021,
+          "precision": 0.9881,
+          "f1": 0.9923,
+          "novel_dr": null
+        },
+        {
+          "percentile": 99.99,
+          "threshold": 1.231352,
+          "detection_rate": 0.9966,
+          "false_alarm_rate": 0.0013,
+          "precision": 0.9925,
+          "f1": 0.9945,
+          "novel_dr": null
+        }
+      ]
+    }
+  },
+  "feature_importance": {
+    "Fwd IAT Min": 0.10846,
+    "Init_Win_bytes_backward": 0.04059,
+    "Bwd IAT Max": 0.02724,
+    "Flow IAT Max": 0.01604,
+    "Init_Win_bytes_forward": 0.00396,
+    "min_seg_size_forward": 0.00044,
+    "Bwd IAT Total": 0.0,
+    "Avg Fwd Segment Size": 0.0,
+    "Bwd IAT Min": 0.0,
+    "Fwd PSH Flags": 0.0,
+    "Fwd URG Flags": 0.0,
+    "act_data_pkt_fwd": 0.0,
+    "Bwd IAT Mean": 0.0,
+    "Max Packet Length": 0.0,
+    "Subflow Bwd Bytes": 0.0,
+    "Packet Length Std": 0.0,
+    "Packet Length Variance": 0.0,
+    "FIN Flag Count": 0.0,
+    "SYN Flag Count": 0.0,
+    "RST Flag Count": 0.0,
+    "CWE Flag Count": 0.0,
+    "ECE Flag Count": 0.0,
+    "Down/Up Ratio": 0.0,
+    "Min Packet Length": 0.0,
+    "Avg Bwd Segment Size": 0.0,
+    "Active Mean": 0.0,
+    "Bwd Packet Length Mean": 0.0,
+    "Total Backward Packets": 0.0,
+    "Total Length of Fwd Packets": 0.0,
+    "Total Length of Bwd Packets": 0.0,
+    "Fwd Packet Length Max": 0.0,
+    "Fwd Packet Length Min": 0.0,
+    "Fwd Packet Length Mean": 0.0,
+    "Fwd Packet Length Std": 0.0,
+    "Bwd Packet Length Max": 0.0,
+    "Fwd IAT Std": 0.0,
+    "Bwd Packet Length Min": 0.0,
+    "Bwd Packet Length Std": 0.0,
+    "Flow Bytes/s": 0.0,
+    "Idle Max": 0.0,
+    "Idle Std": 0.0,
+    "Idle Mean": 0.0,
+    "Active Min": 0.0,
+    "Active Max": 0.0,
+    "Active Std": 0.0,
+    "Fwd Header Length": -6e-05,
+    "Subflow Bwd Packets": -6e-05,
+    "Subflow Fwd Bytes": -6e-05,
+    "URG Flag Count": -6e-05,
+    "Bwd Packets/s": -6e-05,
+    "Idle Min": -6e-05,
+    "PSH Flag Count": -6e-05,
+    "Total Fwd Packets": -0.00012,
+    "Subflow Fwd Packets": -0.00012,
+    "Average Packet Size": -0.00018,
+    "ACK Flag Count": -0.00018,
+    "Packet Length Mean": -0.00018,
+    "Bwd Header Length": -0.00018,
+    "Fwd IAT Max": -0.0003,
+    "Fwd IAT Mean": -0.0003,
+    "Flow Duration": -0.0003,
+    "Fwd Packets/s": -0.00036,
+    "Flow IAT Mean": -0.00036,
+    "Flow Packets/s": -0.00036,
+    "Fwd IAT Total": -0.00048,
+    "Flow IAT Std": -0.00352,
+    "Flow IAT Min": -0.00469,
+    "Bwd IAT Std": -0.01635
+  }
+}

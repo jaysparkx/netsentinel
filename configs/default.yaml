@@ -1,0 +1,39 @@
+# =============================================================
+#  NetSentinel — ملف الإعدادات الافتراضي
+#  كل قيمة هنا يمكن تغييرها بدون تعديل الكود.
+# =============================================================
+
+seed: 42                      # بذرة العشوائية → نتائج قابلة للتكرار (Reproducibility)
+
+paths:
+  raw_dir: data/raw           # مكان ملفات NSL-KDD الأصلية
+  artifacts_dir: artifacts    # النماذج المدرّبة (.joblib)
+  reports_dir: reports        # التقارير والرسوم البيانية
+
+data:
+  validation_size: 0.2        # 20% من بيانات التدريب للتحقق (اختيار أفضل نموذج)
+  # "full"  = كل الـ 40 ميزة (تحتاج فحص محتوى الحزم)
+  # "live"  = 28 ميزة فقط يمكن حسابها من ترويسات الحزم (للالتقاط الحي)
+  feature_profiles: [full, live]
+
+supervised:
+  # النماذج التي سنقارن بينها. سيُختار الأفضل تلقائياً حسب Macro-F1.
+  candidates: [random_forest, hist_gradient_boosting, logistic_regression, mlp]
+  selection_metric: f1_macro
+
+anomaly:
+  # الكاشف غير المُشرَف يتدرّب على حركة "طبيعية" فقط.
+  candidates: [isolation_forest, autoencoder]
+  # العتبة = هذه النسبة المئوية من درجات الشذوذ على بيانات طبيعية.
+  # 99 → نتوقّع ~1% إنذارات كاذبة من هذه الطبقة.
+  threshold_percentile: 99.0
+
+evaluation:
+  test_sets: [KDDTest+, KDDTest-21]
+  permutation_importance_samples: 3000
+
+cicids:
+  # CIC-IDS2017 كبيرة (2.5 مليون تدفّق). نتدرّب على عيّنة متوازنة ونختبر على الكل.
+  normal_train_samples: 250000   # عدد التدفّقات الطبيعية في عيّنة التدريب
+  attack_cap_per_type: 50000     # الحد الأقصى من كل نوع هجوم (النادر يُؤخذ كاملاً)
+  random_test_size: 0.3          # حصّة الاختبار في تجربة التقسيم العشوائي
