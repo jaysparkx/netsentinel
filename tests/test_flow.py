@@ -96,12 +96,14 @@ def test_live_capture_loses_no_packets_during_a_burst(monkeypatch):
             self.prn = prn
 
         def start(self):
+            packets = [IP(raw(IP(src="10.0.0.66", dst="10.0.0.10") / TCP(sport=40000, dport=port, flags="S")))
+                       for port in range(1, 2001)]
+
             def burst():
-                now = _time.time()
-                for port in range(1, 2001):
-                    pkt = IP(raw(IP(src="10.0.0.66", dst="10.0.0.10") / TCP(sport=40000, dport=port, flags="S")))
-                    pkt.time = now
+                for pkt in packets:          # دفعة واحدة سريعة، كما يفعل nmap
+                    pkt.time = _time.time()
                     self.prn(pkt)
+                burst_done.set()
             threading.Thread(target=burst, daemon=True).start()
 
         def stop(self, join=False):
@@ -111,9 +113,16 @@ def test_live_capture_loses_no_packets_during_a_burst(monkeypatch):
         AsyncSniffer = FakeSniffer
 
     monkeypatch.setattr(capture, "_require_scapy", lambda: FakeScapy)
+    burst_done = threading.Event()
     seen = []
-    deadline = _time.time() + 3
-    capture.live_capture(seen.append, batch_seconds=0.5, should_stop=lambda: _time.time() > deadline)
+    stop_after = []
+
+    def should_stop() -> bool:   # نتوقّف بعد انتهاء الدفعة بدفعتَي تحليل كاملتين
+        if burst_done.is_set() and not stop_after:
+            stop_after.append(_time.time() + 1.2)
+        return bool(stop_after) and _time.time() > stop_after[0]
+
+    capture.live_capture(seen.append, batch_seconds=0.5, should_stop=should_stop)
     total = sum(len(batch) for batch in seen)
     assert total == 2000
 
