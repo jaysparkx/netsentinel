@@ -30,7 +30,7 @@
    $ uv venv --python 3.11 .venv
    $ uv pip install --python .venv/bin/python -e ".[live,web,dev]"
 
-5) تأكّد أن كل شيء سليم (يجب أن ترى: 36 passed):
+5) تأكّد أن كل شيء سليم (يجب أن ترى: 37 passed):
    $ .venv/bin/pytest -q
 
 ✓ انتهى. النماذج المدرَّبة موجودة داخل المشروع (مجلد artifacts) — لا تحتاج تدريباً.
@@ -186,7 +186,7 @@
  الجزء 7 — أوامر متقدّمة (للمطوّرين في الفريق)
 ================================================================================
 
-   $ .venv/bin/pytest -q                                        كل الاختبارات (36)
+   $ .venv/bin/pytest -q                                        كل الاختبارات (37)
    $ .venv/bin/netsentinel download --dataset all               تنزيل البيانات (260 MB)
    $ .venv/bin/netsentinel train                                تدريب NSL-KDD (~5 د)
    $ .venv/bin/netsentinel train --dataset cicids2017           تدريب CIC-IDS2017 (~20 د)

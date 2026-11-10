@@ -76,3 +76,43 @@ def test_header_only_decoding_can_be_enabled_repeatedly():
     from netsentinel.live.capture import _require_scapy
     for _ in range(3):
         _require_scapy()
+
+
+def test_live_capture_loses_no_packets_during_a_burst(monkeypatch):
+    """
+    مسح nmap = آلاف الحزم في ثانية. الالتقاط يجب أن يستمر أثناء التحليل
+    (النسخة الأولى كانت تتوقّف عن الاستماع أثناء التحليل فضاع أغلب المسح).
+    """
+    import threading
+    import time as _time
+
+    from scapy.all import IP, TCP, raw
+
+    import netsentinel.live.capture as capture
+
+    class FakeSniffer:
+        """يحاكي AsyncSniffer: يرسل 2000 حزمة SYN دفعة واحدة إلى prn."""
+        def __init__(self, prn, **_):
+            self.prn = prn
+
+        def start(self):
+            def burst():
+                now = _time.time()
+                for port in range(1, 2001):
+                    pkt = IP(raw(IP(src="10.0.0.66", dst="10.0.0.10") / TCP(sport=40000, dport=port, flags="S")))
+                    pkt.time = now
+                    self.prn(pkt)
+            threading.Thread(target=burst, daemon=True).start()
+
+        def stop(self, join=False):
+            pass
+
+    class FakeScapy:
+        AsyncSniffer = FakeSniffer
+
+    monkeypatch.setattr(capture, "_require_scapy", lambda: FakeScapy)
+    seen = []
+    deadline = _time.time() + 3
+    capture.live_capture(seen.append, batch_seconds=0.5, should_stop=lambda: _time.time() > deadline)
+    total = sum(len(batch) for batch in seen)
+    assert total == 2000

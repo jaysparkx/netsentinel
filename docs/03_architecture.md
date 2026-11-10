@@ -64,7 +64,7 @@ netsentinel/
 ├── app/dashboard.py              ← لوحة Streamlit قديمة (نسخة احتياطية)
 ├── run.txt                       ← خطوات التثبيت والتشغيل والاستخدام
 ├── tools/make_demo_pcap.py       ← توليد حركة عرض (طبيعي + 3 هجمات)
-├── tests/                        ← 36 اختباراً آلياً (pytest)
+├── tests/                        ← 37 اختباراً آلياً (pytest)
 ├── data/raw/                     ← ملفات NSL-KDD
 ├── artifacts/{full,live}/        ← النماذج المدرَّبة
 └── reports/                      ← metrics.json + figures/ + RESULTS.md
