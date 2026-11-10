@@ -116,3 +116,21 @@ def test_live_capture_loses_no_packets_during_a_burst(monkeypatch):
     capture.live_capture(seen.append, batch_seconds=0.5, should_stop=lambda: _time.time() > deadline)
     total = sum(len(batch) for batch in seen)
     assert total == 2000
+
+
+def test_bpf_reads_use_the_enlarged_kernel_buffer(monkeypatch):
+    """
+    macOS يرفض قراءة BPF أصغر من حجم المخزن. sniff() يطلب 65535 دائماً، فبعد تكبير
+    المخزن يجب أن نقرأه كاملاً — وإلا يتوقّف الالتقاط بصمت.
+    """
+    import pytest
+    bpf = pytest.importorskip("scapy.arch.bpf.supersocket")
+    from netsentinel.live.capture import _require_scapy
+
+    _require_scapy()
+    requested = []
+    monkeypatch.setattr(bpf.os, "read", lambda fd, n: requested.append(n) or b"")
+    sock = object.__new__(bpf.L2bpfListenSocket)
+    sock.bpf_fd, sock.received_frames = -1, []
+    bpf.L2bpfListenSocket.recv(sock)              # كما يستدعيها sniff()
+    assert requested == [bpf.BPF_BUFFER_LENGTH] and bpf.BPF_BUFFER_LENGTH > 65535

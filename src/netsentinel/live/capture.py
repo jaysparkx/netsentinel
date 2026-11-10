@@ -27,7 +27,50 @@ def _require_scapy():
     except ImportError as exc:
         raise ImportError("Live capture needs scapy:  pip install 'netsentinel[live]'") from exc
     _decode_headers_only(scapy)
+    _enlarge_bpf_buffer()
     return scapy
+
+
+def _enlarge_bpf_buffer() -> None:
+    """
+    macOS/BSD: نكبّر مخزن الالتقاط في نواة النظام (BPF) من 64 KB إلى الحدّ الأقصى المسموح.
+
+    لماذا؟ مسح nmap يرسل ~4000 حزمة في أقل من ثانية. مخزن 64 KB يتّسع لنحو 800 حزمة
+    فقط، والباقي تُسقطه النواة قبل أن يقرأه بايثون — فلم تُرَ أغلب حزم المسح في العرض الحي.
+    (tcpdump لم يُعانِ من ذلك لأنه يستخدم مخزناً أكبر.)
+
+    ملاحظة تقنية: على BPF يجب أن يكون حجم القراءة مساوياً لحجم المخزن تماماً، لذلك
+    نعدّل القيمة الافتراضية لدوال القراءة في Scapy أيضاً، لا الثابت فقط.
+    """
+    try:
+        import scapy.arch.bpf.supersocket as bpf
+    except ImportError:          # ليس macOS/BSD (مثلاً Linux) — لا حاجة
+        return
+    size = _bpf_max_buffer()
+    if getattr(bpf, "_netsentinel_patched", False):
+        return
+    bpf.BPF_BUFFER_LENGTH = size
+    # sniff() يستدعي recv(x=65535) دائماً؛ نجبر القراءة على حجم المخزن كاملاً وإلا رفضتها النواة.
+    for cls in (bpf.L2bpfListenSocket, bpf._L2bpfSocket):
+        original = cls.recv_raw
+
+        def recv_raw(self, x=size, _original=original):
+            return _original(self, size)
+
+        cls.recv_raw = recv_raw
+    if bpf.L3bpfSocket.recv.__defaults__:
+        bpf.L3bpfSocket.recv.__defaults__ = (size,) + bpf.L3bpfSocket.recv.__defaults__[1:]
+    bpf._netsentinel_patched = True
+
+
+def _bpf_max_buffer(default: int = 524288) -> int:
+    """أكبر مخزن BPF يسمح به النظام (sysctl debug.bpf_maxbufsize)، بحدّ أقصى 4 MB."""
+    import subprocess
+    try:
+        out = subprocess.run(["sysctl", "-n", "debug.bpf_maxbufsize"], capture_output=True, text=True, timeout=2)
+        return min(int(out.stdout.strip()), 4 * 1024 * 1024)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return default
 
 
 def _decode_headers_only(scapy) -> None:
