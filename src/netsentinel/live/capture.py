@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from collections.abc import Callable, Iterable
 
 import pandas as pd
@@ -57,7 +58,7 @@ def to_packet_info(pkt) -> PacketInfo | None:
     if TCP in pkt:
         seg = pkt[TCP]
         return PacketInfo(float(pkt.time), "tcp", ip.src, ip.dst, seg.sport, seg.dport,
-                          max(ip_payload - seg.dataofs * 4, 0), str(seg.flags), bad_frag)
+                          max(ip_payload - (seg.dataofs or 5) * 4, 0), str(seg.flags), bad_frag)
     if UDP in pkt:
         seg = pkt[UDP]
         return PacketInfo(float(pkt.time), "udp", ip.src, ip.dst, seg.sport, seg.dport,
@@ -78,9 +79,9 @@ def _ip_payload_length(ip) -> int:
     يُرجع الجزء الملتقَط فقط، فتبدو كل الحزم صغيرة. (اكتشفنا هذا الخطأ عند تجربة
     حزم حقيقية — الحزم الصناعية كانت كاملة فلم يظهر.)
     """
-    if ip.len:
+    if ip.len and ip.ihl:
         return int(ip.len) - int(ip.ihl) * 4
-    return len(ip.payload)   # بعض أنظمة الإرسال (TSO) تترك الحقل صفراً
+    return len(ip.payload)   # الحقل صفر (TSO) أو غير محسوب بعد — نرجع لطول الحمولة الملتقَطة
 
 
 def packets_to_features(packets: Iterable) -> pd.DataFrame:
@@ -106,29 +107,60 @@ def live_capture(
     should_stop: Callable[[], bool] | None = None,
 ) -> None:
     """
-    يلتقط باستمرار على دفعات. بعد كل دفعة:
-        1. يحسب الميزات على حزم آخر context_seconds (حتى تكون نوافذ
-           "آخر 255 اتصالاً" ممتلئة بالسياق الصحيح).
-        2. يمرّر إلى on_batch فقط الاتصالات التي بدأت في الدفعة الأخيرة
-           (حتى لا نُبلّغ عن نفس الاتصال مرتين).
+    يلتقط باستمرار دون أي فجوة، ويحلّل كل batch_seconds:
+
+        خيط الالتقاط (AsyncSniffer) ── يستمع طوال الوقت ويضع كل حزمة في طابور
+        الحلقة هنا ── كل batch_seconds: تسحب الحزم الجديدة من الطابور ←
+                       تحسب الميزات على حزم آخر context_seconds (حتى تكون نوافذ
+                       "آخر 255 اتصالاً" ممتلئة بالسياق الصحيح) ←
+                       تمرّر إلى on_batch فقط الاتصالات التي بدأت منذ آخر دفعة.
+
+    لماذا خيطان؟ في النسخة الأولى كنا نلتقط 3 ثوانٍ ثم نحلّل — وأثناء التحليل لا أحد
+    يستمع، فضاع أغلب مسح nmap (ثانية واحدة) وأغلب الـ flood. (اكتُشف في عرض حيّ.)
+
     أوقفه بـ Ctrl+C، أو بإرجاع True من should_stop (تستخدمه الواجهة عند إغلاق المتصفّح).
     """
     scapy = _require_scapy()
-    buffer: list[PacketInfo] = []
-    logger.info("بدء الالتقاط على %s (دفعة كل %.0f ث) — Ctrl+C للإيقاف", interface or "الواجهة الافتراضية", batch_seconds)
+    incoming: deque[PacketInfo] = deque()
 
-    while not (should_stop and should_stop()):
-        batch_start = time.time()
+    def on_packet(pkt) -> None:            # يعمل في خيط الالتقاط: خفيف وسريع عمداً
         try:
-            packets = scapy.sniff(iface=interface, timeout=batch_seconds, filter=bpf_filter, store=True)
-        except Exception:   # دفعة فاشلة لا يجب أن توقف المراقبة كلها
-            logger.exception("فشلت دفعة التقاط — نتابع بالدفعة التالية")
-            continue
-        buffer.extend(i for i in (to_packet_info(p) for p in packets) if i is not None)
-        buffer = [p for p in buffer if p.timestamp >= batch_start - context_seconds]
-        if not buffer:
-            continue
-        features = connections_to_features(assemble_connections(buffer))
-        fresh = features[features["timestamp"] >= batch_start]
-        if not fresh.empty:
-            on_batch(fresh.reset_index(drop=True))
+            info = to_packet_info(pkt)
+        except Exception:                  # حزمة واحدة غريبة لا يجب أن توقف الالتقاط كله
+            logger.debug("تجاهل حزمة تعذّر فكّها", exc_info=True)
+            return
+        if info is not None:
+            incoming.append(info)
+
+    sniffer = scapy.AsyncSniffer(iface=interface, filter=bpf_filter, store=False, prn=on_packet)
+    sniffer.start()
+    logger.info("بدء الالتقاط على %s (تحليل كل %.0f ث) — Ctrl+C للإيقاف", interface or "الواجهة الافتراضية", batch_seconds)
+
+    buffer: list[PacketInfo] = []
+    reported: dict[tuple, float] = {}      # الاتصالات التي أبلغنا عنها ← وقت بدايتها
+    key_cols = ["protocol_type", "src_ip", "src_port", "dst_ip", "dst_port", "timestamp"]
+    try:
+        while not (should_stop and should_stop()):
+            time.sleep(batch_seconds)
+            while incoming:
+                buffer.append(incoming.popleft())
+            now = time.time()
+            buffer = [p for p in buffer if p.timestamp >= now - context_seconds]
+            reported = {k: t for k, t in reported.items() if t >= now - context_seconds}
+            if not buffer:
+                continue
+            try:
+                features = connections_to_features(assemble_connections(buffer))
+                # نُبلّغ عن كل اتصال مرة واحدة فقط — بهويته (5-tuple + وقت البداية) لا بالساعة،
+                # فلا يضيع اتصال بدأ قبل لحظة التحليل ووصلت حزمته بعدها.
+                keys = list(features[key_cols].itertuples(index=False, name=None))
+                is_new = [k not in reported for k in keys]
+                fresh = features[is_new]
+                for k in (k for k, new in zip(keys, is_new) if new):
+                    reported[k] = k[-1]
+                if not fresh.empty:
+                    on_batch(fresh.reset_index(drop=True))
+            except Exception:   # دفعة فاشلة لا يجب أن توقف المراقبة كلها
+                logger.exception("فشل تحليل دفعة — نتابع بالدفعة التالية")
+    finally:
+        sniffer.stop(join=False)

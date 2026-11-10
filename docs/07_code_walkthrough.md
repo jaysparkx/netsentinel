@@ -302,7 +302,7 @@ final = np.where(clf_label != "normal", clf_label,
 ## 18. `tools/make_demo_pcap.py`
 يصنع `demo_normal.pcap` و`demo_attack.pcap` بـ Scapy: جلسات HTTP كاملة، DNS، SYN Flood، Port Scan، Ping Sweep. **لا يرسل شيئاً لأي شبكة.**
 
-## 19. `tests/` — 36 اختباراً
+## 19. `tests/` — 37 اختباراً
 | الملف | يختبر |
 |---|---|
 | `conftest.py` | يصنع بيانات صناعية "منطقية" بأعمدة NSL-KDD |

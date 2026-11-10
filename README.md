@@ -49,7 +49,7 @@
 - 🎯 **ضبط على شبكتك**: أمر `baseline` يعيد تعلّم "الطبيعي" من حركتك
 - 🖥️ **موقع خاص بنا** يعمل بدون إنترنت: شريط حزم حيّ، النتائج، تحليل pcap، مختبر، و**عرض حيّ مهاجم ضد مدافع** مع طرفية داخل الموقع
 - 📝 واجهة أوامر + تقرير يُولَّد آلياً
-- ✅ **36 اختباراً آلياً** ونتائج قابلة للتكرار حرفياً
+- ✅ **37 اختباراً آلياً** ونتائج قابلة للتكرار حرفياً
 - 🌍 **مُختبَر على مجموعتي بيانات**: NSL-KDD (معيار أكاديمي) و CIC-IDS2017 (حركة حقيقية حديثة)
 
 ## 🚀 البدء السريع
@@ -65,7 +65,7 @@ uv venv --python 3.11 .venv
 uv pip install --python .venv/bin/python -e ".[live,web,dev]"
 
 sudo .venv/bin/netsentinel web            # the website → http://127.0.0.1:8000 (sudo = live capture)
-.venv/bin/pytest -q                       # 36 tests
+.venv/bin/pytest -q                       # 37 tests
 
 # optional — rebuild everything from the raw data
 .venv/bin/netsentinel download --dataset all          # NSL-KDD (24 MB) + CIC-IDS2017 (235 MB, SHA-256 verified)
@@ -114,7 +114,7 @@ netsentinel/
 ├── app/dashboard.py            # older Streamlit dashboard (kept as backup)
 ├── tools/make_demo_pcap.py
 ├── tools/capture_real_traffic.sh
-├── tests/                      # 36 pytest tests
+├── tests/                      # 37 pytest tests
 ├── docs/                       # Arabic documentation (00–10)
 └── reports/                    # generated results + figures
 ```
