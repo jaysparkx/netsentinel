@@ -1,0 +1,22 @@
+<section id="data" data-section="النتائج على ثلاث مجموعات بيانات، والصدق في التقييم" data-transition="fade" style="background:#14181c;color:#ecebe6;font-family:'IBM Plex Sans Arabic', Tahoma, sans-serif;padding:128px;display:flex;flex-direction:column;gap:64px">
+<h2 style="font-size:72px;font-weight:600;line-height:1.2;text-align:right">اختبرناه على ثلاثة مصادر مختلفة</h2>
+<div style="display:flex;flex-direction:row-reverse;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;padding:40px;background:#0b0d0f">
+<p style="font-family:'Space Mono', 'Courier New', monospace;font-size:24px;color:#8b9197;text-align:right">معيار أكاديمي — 1998</p>
+<h3 style="font-family:'Space Mono', 'Courier New', monospace;font-size:44px;font-weight:700;text-align:right">NSL-KDD</h3>
+<p style="font-size:32px;color:#bcc1c6;text-align:right;line-height:1.5">148 ألف اتصال. ملف الاختبار فيه 17 نوع هجوم لا يوجد في التدريب.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;padding:40px;background:#0b0d0f">
+<p style="font-family:'Space Mono', 'Courier New', monospace;font-size:24px;color:#5fd4ff;text-align:right">حركة حقيقية — 2017</p>
+<h3 style="font-family:'Space Mono', 'Courier New', monospace;font-size:44px;font-weight:700;text-align:right">CIC-IDS2017</h3>
+<p style="font-size:32px;color:#bcc1c6;text-align:right;line-height:1.5">2.8 مليون تدفّق من شبكة فيها 25 مستخدماً، وهجمات بأدوات حقيقية.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;padding:40px;background:#0b0d0f">
+<p style="font-family:'Space Mono', 'Courier New', monospace;font-size:24px;color:#ffb000;text-align:right">التقطناها بأنفسنا</p>
+<h3 style="font-size:44px;font-weight:600;text-align:right">لابتوبنا</h3>
+<p style="font-size:32px;color:#bcc1c6;text-align:right;line-height:1.5">حزم حقيقية: تصفّح، nmap، و HTTP flood على جهازنا.</p>
+</div>
+</div>
+<p style="font-size:32px;color:#8b9197;text-align:right;line-height:1.5">نزّلنا CIC-IDS2017 الأصلية وتحقّقنا من سلامتها (SHA-256)، ونظّفناها: حذفنا 594 ألف سطر مكرّر حتى لا "يتذكّر" النموذج بدل أن "يكتشف".</p>
+<aside>لم نكتفِ بمجموعة بيانات واحدة. الأولى NSL-KDD: معيار أكاديمي يسمح بالمقارنة مع الأبحاث، وملف اختباره فيه 17 نوع هجوم جديد. الثانية CIC-IDS2017: حركة حقيقية من 2017 فيها 2.8 مليون تدفّق. والثالثة حزم حقيقية التقطناها من لابتوبنا مع أدوات هجوم حقيقية. وفي CIC حذفنا قرابة 600 ألف سطر مكرّر، لأن السطر المكرّر قد يظهر في التدريب والاختبار معاً فتنتفخ النتائج.</aside>
+</section>
