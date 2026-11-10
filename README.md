@@ -56,6 +56,7 @@
 
 > **للفريق:** كل خطوات التثبيت والتشغيل والاستخدام بالعربية في ملف **[`run.txt`](run.txt)**.
 > **أول ملف تقرأه:** [`docs/00_start_here.md`](docs/00_start_here.md) — المشروع كله في 10 دقائق، بلغة بسيطة.
+> **شرائح العرض (16 شريحة بالعربية):** https://claude.ai/artifact/5q8goSGkYEydBzPGh3GBz8 — نسخة احتياطية في `presentation/`.
 
 <div dir="ltr">
 

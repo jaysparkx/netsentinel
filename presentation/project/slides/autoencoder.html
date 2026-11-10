@@ -1,0 +1,19 @@
+<section id="autoencoder" data-transition="fade" style="background:#0b0d0f;color:#ecebe6;font-family:'IBM Plex Sans Arabic', Tahoma, sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<h2 style="font-size:72px;font-weight:600;line-height:1.2;text-align:right">كيف يعرف الـ Autoencoder أن شيئاً غريب؟</h2>
+<div style="display:flex;flex-direction:row-reverse;gap:24px;align-items:center;justify-content:center">
+<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:120px;height:360px;background:#3b4147"></div><p style="font-family:'Space Mono', 'Courier New', monospace;font-size:24px;color:#8b9197">الإدخال: 28</p></div>
+<x-shape kind="arrow-left" style="width:72px;height:36px;background:#3b4147"></x-shape>
+<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:120px;height:200px;background:#3b4147"></div><p style="font-family:'Space Mono', 'Courier New', monospace;font-size:24px;color:#8b9197">ضغط</p></div>
+<x-shape kind="arrow-left" style="width:72px;height:36px;background:#3b4147"></x-shape>
+<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:120px;height:72px;background:#5fd4ff"></div><p style="font-family:'Space Mono', 'Courier New', monospace;font-size:24px;color:#5fd4ff">8 فقط</p></div>
+<x-shape kind="arrow-left" style="width:72px;height:36px;background:#3b4147"></x-shape>
+<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:120px;height:200px;background:#3b4147"></div><p style="font-family:'Space Mono', 'Courier New', monospace;font-size:24px;color:#8b9197">إعادة بناء</p></div>
+<x-shape kind="arrow-left" style="width:72px;height:36px;background:#3b4147"></x-shape>
+<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:120px;height:360px;background:#3b4147"></div><p style="font-family:'Space Mono', 'Courier New', monospace;font-size:24px;color:#8b9197">الإخراج</p></div>
+</div>
+<div style="display:flex;flex-direction:row-reverse;gap:32px">
+<p style="flex:1;font-size:32px;text-align:right;line-height:1.5;padding:32px;background:#14181c">تدرّب على <b>الطبيعي فقط</b>، فيعيد بناء الاتصال الطبيعي بدقة.</p>
+<p style="flex:1;font-size:32px;text-align:right;line-height:1.5;padding:32px;background:#14181c;color:#5fd4ff">اتصال غريب ← إعادة بناء سيئة ← <b>خطأ كبير = تنبيه</b></p>
+</div>
+<aside>مثال بسيط: شخص حفظ وجوه موظفي الشركة. نعطيه صورة، يغمض عينيه، ويحاول رسمها من الذاكرة. صورة موظف يرسمها بدقة، وصورة غريب يرسمها بشكل سيئ. الـ Autoencoder يفعل هذا مع الاتصالات: يضغط الاتصال إلى ثمانية أرقام فقط ثم يعيد بناءه. تدرّب على الطبيعي فقط، فإذا جاءه اتصال غريب يفشل في إعادة بنائه، ومقدار الخطأ هو درجة الغرابة. إذا تجاوز العتبة نطلق تنبيهاً.</aside>
+</section>

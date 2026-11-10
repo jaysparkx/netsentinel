@@ -1,0 +1,18 @@
+{
+  "v": 4,
+  "createdOnFiles": {"v": 1, "at": "2026-11-10T12:00:00Z"},
+  "lists": "css",
+  "title": "NetSentinel — عرض المناقشة",
+  "order": ["cover", "problem", "gap", "idea", "ml", "autoencoder", "data", "nsl", "truth", "cic", "tradeoff", "real", "demo", "security", "limits", "thanks"],
+  "sections": {
+    "s1": {"description": "المشكلة والفكرة: حارس واحد لا يرى اللصّ الجديد، فبنينا حارسين", "start": "cover"},
+    "s2": {"description": "أين تعلّم الآلة: مصنِّف مُشرَف و Autoencoder غير مُشرَف", "start": "ml"},
+    "s3": {"description": "النتائج على ثلاث مجموعات بيانات، والصدق في التقييم", "start": "data"},
+    "s4": {"description": "العرض الحي، الأمان، القيود، والختام", "start": "demo"}
+  },
+  "faces": {
+    "ibm-plex-sans-arabic": {"family": "IBM Plex Sans Arabic", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap"},
+    "space-mono": {"family": "Space Mono", "href": "https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"}
+  },
+  "designSystems": []
+}
