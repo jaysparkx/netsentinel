@@ -195,7 +195,7 @@ netsentinel train --dataset cicids2017 --experiment temporal
 | الملف | ما فيه | الحجم |
 |---|---|---|
 | `data/real/real_normal.pcap` | 60 ثانية تصفّح طبيعي لخادم ويب محلي | 235 اتصالاً |
-| `data/real/real_attack.pcap` | تصفّح طبيعي + **nmap SYN scan** (المنافذ 1–2000) + **nmap -sV** + **HTTP flood** (3000 طلب، 100 متوازية) | 5,537 اتصالاً |
+| `data/real/real_attack.pcap` | تصفّح طبيعي + **nmap SYN scan** (المنافذ 1–2000) + **nmap -sV** + **HTTP flood** (3000 طلب، 100 متوازية) | 5,536 اتصالاً |
 
 كل الهجمات موجّهة إلى `127.0.0.1` (الجهاز نفسه) — لم تخرج حزمة واحدة إلى أي شبكة.
 
