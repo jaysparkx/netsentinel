@@ -1,11 +1,4 @@
-"""
-بيانات اختبار صناعية صغيرة بنفس أعمدة NSL-KDD.
-
-الاختبارات لا تعتمد على ملفات NSL-KDD الحقيقية (حتى تعمل بسرعة وفي أي مكان)،
-بل نصنع جدولاً عشوائياً لكن "منطقياً": الهجمات DoS لها flag=S0 وcount عالٍ...
-"""
-
-from __future__ import annotations
+"""Small fake NSL-KDD tables so the tests run without the real dataset."""
 
 import numpy as np
 import pandas as pd
@@ -22,7 +15,7 @@ ATTACK_PROFILES = {
 }
 
 
-def make_frame(counts: dict[str, int], seed: int = 0) -> pd.DataFrame:
+def make_frame(counts, seed=0):
     rng = np.random.default_rng(seed)
     rows = []
     for attack, n in counts.items():
@@ -52,10 +45,10 @@ def make_frame(counts: dict[str, int], seed: int = 0) -> pd.DataFrame:
 
 
 @pytest.fixture(scope="session")
-def train_frame() -> pd.DataFrame:
+def train_frame():
     return make_frame({"normal": 600, "neptune": 200, "portsweep": 100, "guess_passwd": 60, "rootkit": 40})
 
 
 @pytest.fixture(scope="session")
-def test_frame() -> pd.DataFrame:
+def test_frame():
     return make_frame({"normal": 150, "neptune": 50, "portsweep": 30, "guess_passwd": 15, "rootkit": 10}, seed=1)

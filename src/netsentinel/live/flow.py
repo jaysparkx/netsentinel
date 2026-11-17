@@ -1,30 +1,12 @@
-"""
-تجميع الحزم إلى "اتصالات" وحساب ميزات NSL-KDD منها.
-
-هذه الوحدة مستقلّة عن scapy عمداً: تستقبل حزماً مبسّطة (PacketInfo) فيمكن
-اختبارها بسهولة، ويمكن تغذيتها من أي مصدر (scapy، ملف pcap، أو بيانات صناعية).
-
-المراحل:
-    1. تجميع الحزم حسب "مفتاح الاتصال" (5-tuple):
-           (بروتوكول، IP المصدر، منفذ المصدر، IP الهدف، منفذ الهدف)
-    2. لكل اتصال نحسب الميزات الأساسية: المدة، البايتات، حالة TCP (flag)...
-    3. نرتّب الاتصالات زمنياً ونحسب ميزات النافذة الزمنية (آخر ثانيتين)
-       وميزات نافذة الجهاز (آخر 255 اتصالاً) — تماماً كما وُصفت في KDD 99.
-
-ما لا نحسبه: ميزات المحتوى (num_failed_logins, root_shell...) لأنها تحتاج
-تحليل حمولة التطبيق. لهذا يستخدم الكشف الحي ملف الميزات "live".
-"""
-
-from __future__ import annotations
+# Turn packets into connections and compute the NSL-KDD "live" features for them.
+# Kept separate from scapy so it can be tested with hand made packets.
 
 from collections import deque
 from dataclasses import dataclass, field
 
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# تحويل رقم المنفذ إلى اسم الخدمة بنفس تسميات NSL-KDD
-# ---------------------------------------------------------------------------
+# port -> service name, using the NSL-KDD names
 TCP_SERVICES = {
     7: "echo", 9: "discard", 11: "systat", 13: "daytime", 15: "netstat", 20: "ftp_data",
     21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 37: "time", 42: "name", 43: "whois",
@@ -41,11 +23,14 @@ TCP_SERVICES = {
 UDP_SERVICES = {53: "domain_u", 69: "tftp_u", 123: "ntp_u"}
 ICMP_SERVICES = {8: "eco_i", 0: "ecr_i", 3: "urp_i", 13: "tim_i", 5: "red_i"}
 
+TIME_WINDOW = 2.0       # seconds
+HOST_WINDOW = 255       # connections
+MAX_COUNT = 511         # NSL-KDD caps count at 511
 
-def port_to_service(protocol: str, dst_port: int) -> str:
-    """تقريب لتسمية الخدمة. المنافذ غير المعروفة: ‎<1024 → other، وغير ذلك → private."""
+
+def port_to_service(protocol, dst_port):
     if protocol == "icmp":
-        return ICMP_SERVICES.get(dst_port, "oth_i")   # في ICMP نمرّر "النوع" مكان المنفذ
+        return ICMP_SERVICES.get(dst_port, "oth_i")  # for icmp we store the type in dst_port
     table = TCP_SERVICES if protocol == "tcp" else UDP_SERVICES
     if dst_port in table:
         return table[dst_port]
@@ -54,26 +39,21 @@ def port_to_service(protocol: str, dst_port: int) -> str:
     return "other" if dst_port < 1024 else "private"
 
 
-# ---------------------------------------------------------------------------
-# تمثيل الحزمة والاتصال
-# ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class PacketInfo:
-    """حزمة مبسّطة — فقط الحقول التي نحتاجها من ترويسات IP/TCP/UDP/ICMP."""
     timestamp: float
-    protocol: str            # "tcp" | "udp" | "icmp"
+    protocol: str        # tcp / udp / icmp
     src_ip: str
     dst_ip: str
-    src_port: int            # لـ ICMP = 0
-    dst_port: int            # لـ ICMP = النوع (type)
+    src_port: int
+    dst_port: int
     payload_len: int
-    tcp_flags: str = ""      # مثل "S", "SA", "A", "FA", "R" (أحرف scapy)
+    tcp_flags: str = ""  # scapy style, e.g. "S", "SA", "FA"
     is_bad_fragment: bool = False
 
 
 @dataclass
 class Connection:
-    """حالة اتصال واحد أثناء تجميع حزمه."""
     protocol: str
     src_ip: str
     src_port: int
@@ -85,38 +65,26 @@ class Connection:
     dst_bytes: int = 0
     wrong_fragment: int = 0
     urgent: int = 0
-    # أحداث TCP لتحديد الحالة النهائية
-    events: set[str] = field(default_factory=set)
+    events: set = field(default_factory=set)
 
     @property
-    def service(self) -> str:
+    def service(self):
         return port_to_service(self.protocol, self.dst_port)
 
     @property
-    def flag(self) -> str:
-        """
-        حالة الاتصال بنمط KDD (مشتقّة من مصطلحات Bro/Zeek):
-            SF   : اتصال اكتمل بشكل طبيعي
-            S0   : SYN أُرسل ولم يأتِ أي رد           ← نموذجي في SYN flood
-            REJ  : SYN أُرسل فرُدَّ عليه بـ RST         ← نموذجي في مسح المنافذ
-            RSTO : أُنشئ ثم أنهاه المُبادِر بـ RST
-            RSTR : أُنشئ ثم أنهاه المستجيب بـ RST
-            SH   : SYN ثم FIN من المُبادِر بلا رد
-            S1   : أُنشئ ولم يُغلَق بعد
-            OTH  : لم نرَ بداية الاتصال (SYN)
-        """
+    def flag(self):
+        # simplified version of the Bro/Zeek connection states used in KDD
         if self.protocol != "tcp":
             return "SF"
         e = self.events
-        established = "resp_synack" in e
         if "orig_syn" not in e:
-            return "OTH"
-        if not established:
+            return "OTH"      # we missed the start
+        if "resp_synack" not in e:
             if "resp_rst" in e:
-                return "REJ"
+                return "REJ"  # closed port
             if "orig_fin" in e:
                 return "SH"
-            return "S0"
+            return "S0"       # no answer at all
         if "orig_rst" in e:
             return "RSTO"
         if "resp_rst" in e:
@@ -126,45 +94,37 @@ class Connection:
         return "S1"
 
     @property
-    def is_syn_error(self) -> bool:
-        return self.flag in {"S0", "S1", "S2", "S3"}
+    def is_syn_error(self):
+        return self.flag in ("S0", "S1", "S2", "S3")
 
     @property
-    def is_rej_error(self) -> bool:
+    def is_rej_error(self):
         return self.flag == "REJ"
 
 
-# ---------------------------------------------------------------------------
-# المرحلة 1: الحزم → اتصالات
-# ---------------------------------------------------------------------------
-def assemble_connections(packets: list[PacketInfo], idle_timeout: float = 60.0) -> list[Connection]:
-    """
-    يجمع الحزم في اتصالات ثنائية الاتجاه.
-
-    الحزمة من A إلى B والحزمة من B إلى A تنتميان لنفس الاتصال؛ أول من بدأ
-    يُعتبر "المُبادِر" (originator). إذا مرّ idle_timeout ثانية بلا نشاط،
-    نعتبر الحزمة التالية بداية اتصال جديد.
-    """
-    active: dict[tuple, Connection] = {}
-    finished: list[Connection] = []
+def assemble_connections(packets, idle_timeout=60.0):
+    """Group packets by 5-tuple (both directions). The side that sent first is the originator."""
+    active = {}
+    finished = []
 
     for pkt in sorted(packets, key=lambda p: p.timestamp):
         fwd = (pkt.protocol, pkt.src_ip, pkt.src_port, pkt.dst_ip, pkt.dst_port)
         rev = (pkt.protocol, pkt.dst_ip, pkt.dst_port, pkt.src_ip, pkt.src_port)
         if pkt.protocol == "icmp":
-            rev = fwd  # ICMP بلا منافذ: نعامل كل نوع كاتصال قائم بذاته
+            rev = fwd
 
         if fwd in active:
-            key, from_originator = fwd, True
+            key, from_orig = fwd, True
         elif rev in active:
-            key, from_originator = rev, False   # حزمة رد من المستجيب
+            key, from_orig = rev, False
         else:
-            key, from_originator = fwd, True    # بداية اتصال جديد
+            key, from_orig = fwd, True
         conn = active.get(key)
 
+        # too long without packets -> start a new connection
         if conn is not None and pkt.timestamp - conn.end > idle_timeout:
             finished.append(active.pop(key))
-            conn, key, from_originator = None, fwd, True
+            conn, key, from_orig = None, fwd, True
 
         if conn is None:
             conn = Connection(pkt.protocol, pkt.src_ip, pkt.src_port, pkt.dst_ip, pkt.dst_port,
@@ -172,68 +132,49 @@ def assemble_connections(packets: list[PacketInfo], idle_timeout: float = 60.0) 
             active[key] = conn
 
         conn.end = pkt.timestamp
-        if from_originator:
+        if from_orig:
             conn.src_bytes += pkt.payload_len
         else:
             conn.dst_bytes += pkt.payload_len
         conn.wrong_fragment += int(pkt.is_bad_fragment)
         if pkt.protocol == "tcp":
-            _record_tcp_event(conn, pkt.tcp_flags, from_originator)
+            add_tcp_event(conn, pkt.tcp_flags, from_orig)
 
     return sorted(finished + list(active.values()), key=lambda c: c.start)
 
 
-def _record_tcp_event(conn: Connection, flags: str, from_originator: bool) -> None:
-    side = "orig" if from_originator else "resp"
+def add_tcp_event(conn, flags, from_orig):
+    side = "orig" if from_orig else "resp"
     if "U" in flags:
         conn.urgent += 1
-    if "S" in flags and "A" in flags and not from_originator:
+    if "S" in flags and "A" in flags and not from_orig:
         conn.events.add("resp_synack")
     elif "S" in flags:
-        conn.events.add(f"{side}_syn")
+        conn.events.add(side + "_syn")
     if "F" in flags:
-        conn.events.add(f"{side}_fin")
+        conn.events.add(side + "_fin")
     if "R" in flags:
-        conn.events.add(f"{side}_rst")
+        conn.events.add(side + "_rst")
 
 
-# ---------------------------------------------------------------------------
-# المرحلة 2 + 3: الاتصالات → جدول ميزات
-# ---------------------------------------------------------------------------
-TIME_WINDOW_SECONDS = 2.0
-# في بيانات NSL-KDD: dst_host_count ≤ 255 و count ≤ 511. نلتزم بنفس الحدود
-# حتى لا نعطي النموذج قيماً خارج المدى الذي تدرّب عليه.
-HOST_WINDOW_CONNECTIONS = 255
-MAX_TIME_COUNT = 511
-
-
-def _rate(part: int, total: int) -> float:
+def rate(part, total):
     return round(part / total, 2) if total else 0.0
 
 
-def connections_to_features(connections: list[Connection]) -> pd.DataFrame:
-    """
-    يحوّل قائمة اتصالات (مرتّبة زمنياً) إلى DataFrame بأعمدة ملف "live" +
-    أعمدة تعريفية (src_ip, dst_ip, ...) لعرضها في التنبيهات.
-
-    لكل اتصال نُلقي نظرة على "الماضي القريب":
-        - نافذة زمنية: كل الاتصالات خلال آخر ثانيتين.
-        - نافذة الجهاز: آخر 255 اتصالاً (بغضّ النظر عن الوقت).
-    """
+def connections_to_features(connections):
+    """One row per connection: ids, basic features, last-2-seconds and last-255-connections stats."""
     rows = []
-    time_window: deque[Connection] = deque()
-    host_window: deque[Connection] = deque(maxlen=HOST_WINDOW_CONNECTIONS - 1)  # + الاتصال الحالي
+    time_window = deque()
+    host_window = deque(maxlen=HOST_WINDOW - 1)  # plus the current connection = 255
 
     for conn in connections:
-        while time_window and conn.start - time_window[0].start > TIME_WINDOW_SECONDS:
+        while time_window and conn.start - time_window[0].start > TIME_WINDOW:
             time_window.popleft()
 
-        rows.append({
-            # --- معرّفات (لا تدخل النموذج) ---
+        row = {
             "timestamp": conn.start,
             "src_ip": conn.src_ip, "src_port": conn.src_port,
             "dst_ip": conn.dst_ip, "dst_port": conn.dst_port,
-            # --- الميزات الأساسية ---
             "duration": int(round(conn.end - conn.start)),
             "protocol_type": conn.protocol,
             "service": conn.service,
@@ -243,48 +184,48 @@ def connections_to_features(connections: list[Connection]) -> pd.DataFrame:
             "land": int(conn.src_ip == conn.dst_ip and conn.src_port == conn.dst_port),
             "wrong_fragment": conn.wrong_fragment,
             "urgent": conn.urgent,
-            **_time_features(conn, list(time_window) + [conn]),
-            **_host_features(conn, list(host_window) + [conn]),
-        })
+        }
+        row.update(time_features(conn, list(time_window) + [conn]))
+        row.update(host_features(conn, list(host_window) + [conn]))
+        rows.append(row)
+
         time_window.append(conn)
         host_window.append(conn)
 
     return pd.DataFrame(rows)
 
 
-def _time_features(conn: Connection, window: list[Connection]) -> dict:
-    """ميزات آخر ثانيتين (تشمل الاتصال الحالي، كما في KDD)."""
+def time_features(conn, window):
     same_host = [c for c in window if c.dst_ip == conn.dst_ip]
     same_srv = [c for c in window if c.service == conn.service]
     n_host, n_srv = len(same_host), len(same_srv)
     return {
-        "count": min(n_host, MAX_TIME_COUNT),
-        "srv_count": min(n_srv, MAX_TIME_COUNT),
-        "serror_rate": _rate(sum(c.is_syn_error for c in same_host), n_host),
-        "srv_serror_rate": _rate(sum(c.is_syn_error for c in same_srv), n_srv),
-        "rerror_rate": _rate(sum(c.is_rej_error for c in same_host), n_host),
-        "srv_rerror_rate": _rate(sum(c.is_rej_error for c in same_srv), n_srv),
-        "same_srv_rate": _rate(sum(c.service == conn.service for c in same_host), n_host),
-        "diff_srv_rate": _rate(sum(c.service != conn.service for c in same_host), n_host),
-        "srv_diff_host_rate": _rate(sum(c.dst_ip != conn.dst_ip for c in same_srv), n_srv),
+        "count": min(n_host, MAX_COUNT),
+        "srv_count": min(n_srv, MAX_COUNT),
+        "serror_rate": rate(sum(c.is_syn_error for c in same_host), n_host),
+        "srv_serror_rate": rate(sum(c.is_syn_error for c in same_srv), n_srv),
+        "rerror_rate": rate(sum(c.is_rej_error for c in same_host), n_host),
+        "srv_rerror_rate": rate(sum(c.is_rej_error for c in same_srv), n_srv),
+        "same_srv_rate": rate(sum(c.service == conn.service for c in same_host), n_host),
+        "diff_srv_rate": rate(sum(c.service != conn.service for c in same_host), n_host),
+        "srv_diff_host_rate": rate(sum(c.dst_ip != conn.dst_ip for c in same_srv), n_srv),
     }
 
 
-def _host_features(conn: Connection, window: list[Connection]) -> dict:
-    """ميزات آخر 255 اتصالاً (نافذة الجهاز) الموجّهة لنفس الجهاز الهدف."""
+def host_features(conn, window):
     same_host = [c for c in window if c.dst_ip == conn.dst_ip]
     same_host_srv = [c for c in same_host if c.service == conn.service]
+    same_srv = [c for c in window if c.service == conn.service]
     n_host, n_hs = len(same_host), len(same_host_srv)
-    srv_any_host = [c for c in window if c.service == conn.service]
     return {
         "dst_host_count": n_host,
         "dst_host_srv_count": n_hs,
-        "dst_host_same_srv_rate": _rate(n_hs, n_host),
-        "dst_host_diff_srv_rate": _rate(n_host - n_hs, n_host),
-        "dst_host_same_src_port_rate": _rate(sum(c.src_port == conn.src_port for c in same_host), n_host),
-        "dst_host_srv_diff_host_rate": _rate(sum(c.dst_ip != conn.dst_ip for c in srv_any_host), len(srv_any_host)),
-        "dst_host_serror_rate": _rate(sum(c.is_syn_error for c in same_host), n_host),
-        "dst_host_srv_serror_rate": _rate(sum(c.is_syn_error for c in same_host_srv), n_hs),
-        "dst_host_rerror_rate": _rate(sum(c.is_rej_error for c in same_host), n_host),
-        "dst_host_srv_rerror_rate": _rate(sum(c.is_rej_error for c in same_host_srv), n_hs),
+        "dst_host_same_srv_rate": rate(n_hs, n_host),
+        "dst_host_diff_srv_rate": rate(n_host - n_hs, n_host),
+        "dst_host_same_src_port_rate": rate(sum(c.src_port == conn.src_port for c in same_host), n_host),
+        "dst_host_srv_diff_host_rate": rate(sum(c.dst_ip != conn.dst_ip for c in same_srv), len(same_srv)),
+        "dst_host_serror_rate": rate(sum(c.is_syn_error for c in same_host), n_host),
+        "dst_host_srv_serror_rate": rate(sum(c.is_syn_error for c in same_host_srv), n_hs),
+        "dst_host_rerror_rate": rate(sum(c.is_rej_error for c in same_host), n_host),
+        "dst_host_srv_rerror_rate": rate(sum(c.is_rej_error for c in same_host_srv), n_hs),
     }

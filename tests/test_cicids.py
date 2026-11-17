@@ -1,5 +1,3 @@
-"""اختبارات دعم CIC-IDS2017 (بدون الحاجة لتنزيل البيانات الحقيقية)."""
-
 import numpy as np
 import pandas as pd
 
@@ -21,8 +19,8 @@ def test_every_category_is_a_known_class():
 def test_feature_list_excludes_port_and_constant_columns():
     features = cicids_features()
     assert len(features) == 68
-    assert "Destination Port" not in features          # منع "الطريق المختصر"
-    assert "Fwd Avg Bulk Rate" not in features         # عمود صفري دائماً
+    assert "Destination Port" not in features
+    assert "Fwd Avg Bulk Rate" not in features
 
 
 def test_signed_log1p_handles_negative_values():
@@ -35,7 +33,7 @@ def test_cicids_preprocessor_on_random_flows():
     spec = cicids_spec("test")
     rng = np.random.default_rng(0)
     df = pd.DataFrame(rng.exponential(1000, size=(50, len(spec.features))), columns=spec.features)
-    df["Init_Win_bytes_forward"] = -1                  # قيمة سالبة حقيقية في البيانات
+    df["Init_Win_bytes_forward"] = -1
     X = build_preprocessor(spec).fit_transform(select_features(df, spec))
     assert X.shape == (50, 68) and np.isfinite(X).all()
 

@@ -1,314 +1,165 @@
 <div dir="rtl">
 
-# 07 — شرح الكود: ملفاً ملفاً ودالةً دالة
+# 07 - شرح الكود
 
-> **طريقة القراءة المقترحة للفريق:** افتح هذا الملف بجانب الكود. كل دالة هنا مشروحة بـ: **ماذا تفعل ← لماذا ← ملاحظة مهمة**. وداخل الكود نفسه ستجد تعليقات عربية في كل ملف.
+افتح هذا الملف بجانب الكود. لكل ملف: ما فيه وما تفعله أهم دواله.
 
-## كيف تقرأ الكود إذا لم تكن مبرمجاً؟
-
-1. **لا تقرأ كل شيء.** ابدأ بالملف الذي يخصّ الجزء الذي ستشرحه.
-2. **اقرأ التعليقات العربية أولاً** — كل ملف يبدأ بشرح فكرته، وكل دالة مهمة تحتها شرح.
-3. **الجملة `def اسم(...)`** = تعريف دالة (وصفة تأخذ مدخلات وتُرجع نتيجة).
-4. **`class اسم`** = صنف (قالب يجمع بيانات ودوال معاً، مثل `HybridIDS`).
-5. **السطر الذي يبدأ بـ `#`** = تعليق للبشر، لا يُنفَّذ.
-
-**الملفات الثلاثة الأهم للفهم:** `models/hybrid.py` (القرار)، `models/anomaly.py` (الـ Autoencoder)، `web/attack_range.py` (العرض الحي).
-
-## خريطة الاعتماديات (من يستدعي من)
+ترتيب الاستدعاء باختصار:
 
 ```
-cli.py  ──►  web/server.py  ──►  web/attack_range.py
-   │              └─► (نفس الوحدات أدناه)
-   └─► pipeline/train.py ──► data/loader.py ──► data/schema.py
-            │                features/preprocessing.py
-            │                models/supervised.py, models/anomaly.py
-            │                models/hybrid.py
-            │                evaluation/metrics.py, evaluation/plots.py
-            │                explain/importance.py
-            └─► pipeline/report.py
-   └─► live/capture.py ──► live/flow.py
-   └─► alerts.py
+cli.py -> pipeline/train.py -> data/ + features/ + models/ + evaluation/
+cli.py -> live/capture.py -> live/flow.py
+cli.py -> web/server.py -> web/attack_range.py
 ```
 
----
+## config.py
 
-## 1. `config.py` — الإعدادات
+`load_config(path)` يقرأ `configs/default.yaml` ويحوّله إلى كائن نصل لقيمه بالنقطة (`cfg.paths.raw_dir`). المسارات النسبية تُحسب من جذر المشروع `PROJECT_ROOT` حتى يعمل الأمر من أي مجلد.
 
-| العنصر | ماذا يفعل | لماذا |
-|---|---|---|
-| `PROJECT_ROOT` | مسار جذر المشروع محسوباً من موقع الملف | يعمل الكود من أي مجلد تشغّله منه |
-| `PathsConfig`, `DataConfig`, ... | `dataclass` لكل قسم في YAML | الأنواع واضحة، والخطأ الإملائي يظهر فوراً |
-| `_resolve(path_str)` | يحوّل المسار النسبي لمطلق | `data/raw` في YAML ← المسار الكامل |
-| `load_config(path)` | يقرأ YAML ويبني `Config` | أي مفتاح ناقص يأخذ القيمة الافتراضية |
+## data/schema.py
 
----
+ثوابت NSL-KDD: أسماء الميزات بمجموعاتها الأربع، `RAW_COLUMNS` بترتيب الملف الخام، الميزات النصية الثلاث، `num_outbound_cmds` (صفر دائماً فنحذفها)، الميزات التي نطبق عليها log1p، و`FEATURE_PROFILES` (full فيه 40 ميزة و live فيه 28).
 
-## 2. `data/schema.py` — "قاموس" البيانات
+`ATTACK_CATEGORY` يربط كل هجوم من الـ 39 بفئته (DoS, Probe, R2L, U2R). `attack_to_category("neptune")` تعطي `"DoS"`، واسم غير معروف يعطي `ValueError`.
 
-لا يحوي منطقاً تقريباً، بل **ثوابت** يعتمد عليها كل المشروع:
+`FEATURE_DESCRIPTIONS` و `CATEGORY_DESCRIPTIONS` نصوص إنجليزية قصيرة تظهر في شرح التنبيهات.
 
-| الثابت | المحتوى |
-|---|---|
-| `BASIC_FEATURES` ... `HOST_TRAFFIC_FEATURES` | أسماء الميزات في مجموعاتها الأربع |
-| `RAW_COLUMNS` | الأعمدة الـ 43 بترتيب الملف الخام |
-| `CATEGORICAL_FEATURES` | النصية الثلاث: protocol_type, service, flag |
-| `CONSTANT_FEATURES` | `num_outbound_cmds` (صفر دائماً ← نحذفها) |
-| `SKEWED_FEATURES` | الميزات التي نطبّق عليها log1p |
-| `FEATURE_PROFILES` | `full` (40) و`live` (28) |
-| `ATTACK_CATEGORY` | 39 هجوماً ← فئاتها الأربع |
-| `FEATURE_DESCRIPTIONS_AR` | وصف عربي لكل ميزة (يظهر في شرح التنبيهات) |
+## data/spec.py
 
-**`attack_to_category(attack)`** — `"neptune"` ← `"DoS"`. اسم غير معروف ← خطأ صريح (`ValueError`) بدل أن يمرّ بصمت. *(مبدأ: Fail fast.)*
+`DatasetSpec` يصف مجموعة البيانات: الميزات، النصية منها، المنحرفة، أسماء الفئات، والأوصاف. المعالجة والنموذج والتقييم كلها تقرأ منه، لذلك نفس الكود يعمل على NSL-KDD و CIC-IDS2017. `nsl_kdd_spec(profile)` يبنيه لـ NSL-KDD.
 
----
+## data/loader.py
 
-## 2b. `data/spec.py` — مواصفات مجموعة البيانات
+- `download_nsl_kdd(raw_dir, force)` تنزل الملفات وتتخطى الموجود.
+- `load_split(raw_dir, split)` تقرأ ملفاً وتضيف عمودي `category` و `is_attack`.
+- `mark_novel_attacks(test_df, train_df)` تضع `is_novel=1` لكل هجوم في الاختبار لم يظهر في التدريب. هذا أساس تجربة الهجمات الجديدة.
 
-`DatasetSpec` كائن يصف أي مجموعة بيانات: `features`, `categorical`, `skewed`, `class_names`, `descriptions`. كل أجزاء النظام (المعالجة، الهجين، التفسير، التقييم) تقرأ منه، فيعمل **نفس الكود** على NSL-KDD و CIC-IDS2017. `nsl_kdd_spec(profile)` يبني مواصفات NSL-KDD.
+## data/cicids.py
 
-## 2c. `data/cicids.py` — CIC-IDS2017
+- `FEATURES` الميزات الـ 68 التي نستخدمها، و `DROPPED_COLUMNS` ما حذفناه (منفذ الهدف لأنه يكشف الجواب، والأعمدة المكررة أو الثابتة).
+- `download_cicids` تنزل الملف المضغوط وتتحقق من SHA-256 ثم تفك الضغط.
+- `_clean_label` تصلح الحرف المكسور في أسماء هجمات الويب.
+- `load_cicids(raw_dir, days)` تقرأ الأيام المطلوبة، تحذف Inf/NaN والمكرر، وتحفظ نسخة `clean_*.pkl` لتسريع المرة القادمة.
+- `cicids_spec` يبني الـ DatasetSpec، وكل الميزات تمر بـ signed log.
 
-| العنصر | ماذا يفعل |
-|---|---|
-| `DAY_FILES` | ملفات CSV لكل يوم (الأساس للتقسيم الزمني) |
-| `DROPPED_COLUMNS` | الأعمدة المحذوفة مع **سبب كل حذف** (shortcut / duplicate / constant) |
-| `ATTACK_CATEGORY`, `CLASS_NAMES` | 15 تسمية ← 9 فئات |
-| `download_cicids()` | تنزيل + **تحقّق SHA-256** + فكّ الضغط |
-| `_clean_label()` | يصلح الحرف المكسور `�` في أسماء هجمات الويب |
-| `load_cicids(raw_dir, days)` | تحميل + حذف Inf/NaN + حذف المكرّر + float32 + تخزين مؤقت (cache) |
-| `cicids_spec(profile)` | مواصفات الـ 68 ميزة (كلها تمرّ بـ signed log) |
+## features/preprocessing.py
 
-## 3. `data/loader.py` — التحميل
+- `signed_log1p(x)` = `sign(x) * log(1 + |x|)`، مثل log1p لكنها تقبل القيم السالبة.
+- `build_preprocessor(spec)` يبني `ColumnTransformer`: OneHot للنصية، log ثم Scale للمنحرفة، Scale للباقي. `handle_unknown="ignore"` يعني أن خدمة جديدة في الاختبار لا توقف البرنامج.
+- `select_features(df, spec)` ترجع الأعمدة المطلوبة فقط وتعطي خطأ واضحاً إن نقص عمود.
 
-| الدالة | ماذا تفعل | ملاحظة |
-|---|---|---|
-| `download_nsl_kdd(raw_dir, force)` | تنزّل الملفات الثلاثة | تتخطّى الموجود (إلا مع `force`) |
-| `load_split(raw_dir, split)` | تقرأ ملفاً وتضيف `category` و`is_attack` | `is_attack` للتصنيف الثنائي، `category` للخماسي |
-| `mark_novel_attacks(test_df, train_df)` | تضيف `is_novel=1` لكل هجوم في الاختبار لم يظهر في التدريب | **أساس تجربة Zero-day** |
+## models/supervised.py
 
----
+`CLASSIFIER_NAMES` أسماء المصنفات الأربعة، و `build_classifier(name, seed)` تنشئ المطلوب منها (Random Forest, HistGradientBoosting, Logistic Regression, MLP).
 
-## 4. `features/preprocessing.py` — المعالجة المسبقة
+## models/anomaly.py
 
-| الدالة | ماذا تفعل |
-|---|---|
-| `split_feature_types(features)` | تقسّم قائمة الميزات إلى (نصية، ذيل طويل، عادية) |
-| `build_preprocessor(profile)` | تبني `ColumnTransformer` بثلاثة فروع: OneHot / log1p+Scale / Scale |
-| `select_features(df, profile)` | تُرجع أعمدة الملف المطلوب فقط، وتعطي خطأً واضحاً إن نقص عمود |
+- `AnomalyDetector` الصنف الأب. `calibrate` تجعل العتبة النسبة 99 من درجات الطبيعي، و `predict` تعطي 1 إذا تجاوزت الدرجة العتبة.
+- `IsolationForestDetector` الدرجة هي سالب `score_samples` (لأن sklearn يعطي الطبيعي قيمة أعلى).
+- `AutoencoderDetector` شبكة `MLPRegressor` بطبقات (64, 16, 8, 16, 64) تتعلم `fit(X, X)`. الدرجة هي خطأ إعادة البناء (MSE) لكل سجل.
+- `build_detector(name)` تنشئ الكاشف بالاسم.
 
-**`signed_log1p(x)`** = `sign(x)·log(1+|x|)` — مثل log1p لكنه يقبل القيم السالبة (بعض ميزات CIC سالبة).
+## models/hybrid.py
 
-**سطر مهم:** `OneHotEncoder(handle_unknown="ignore")` ← خدمة جديدة في الاختبار لا توقف البرنامج.
+`NormalBaseline` يحفظ متوسط وانحراف كل ميزة رقمية في الحركة الطبيعية وتكرار كل قيمة نصية. نستعمله في الشرح.
 
----
+`HybridIDS` يجمع المعالجة والمصنف والكاشف والـ baseline:
 
-## 5. `models/supervised.py` — المصنِّفات
+- `predict(df)` قاعدة الدمج:
 
-- `_random_forest`, `_hist_gradient_boosting`, `_logistic_regression`, `_mlp` — كل دالة تُنشئ نموذجاً **غير مدرَّب** بإعدادات مختارة ومشروحة.
-- `SUPERVISED_MODELS` — قاموس: الاسم ← دالة الإنشاء.
-- `build_classifier(name, seed)` — **نمط المصنع (Factory)**: نختار النموذج بالاسم من YAML. لإضافة نموذج جديد (مثلاً XGBoost): دالة واحدة + سطر في القاموس.
-
----
-
-## 6. `models/anomaly.py` — كواشف الشذوذ
-
-### `AnomalyDetector` (صنف مجرّد — Abstract Base Class)
-يفرض على كل كاشف أن يوفّر `fit` و`score`، ويوفّر هو منطق العتبة المشترك:
-
-| الدالة | ماذا تفعل |
-|---|---|
-| `fit(X_normal)` | *(مجرّدة)* تدريب على الطبيعي فقط |
-| `score(X)` | *(مجرّدة)* درجة شذوذ — أعلى = أغرب |
-| `calibrate(X_normal, percentile)` | العتبة = النسبة المئوية من درجات طبيعي التحقق |
-| `predict(X)` | 0/1 حسب العتبة، وترفض العمل إن لم تُعايَر |
-
-### `IsolationForestDetector`
-`score` = **سالب** `score_samples` (لأن sklearn يعطي قيمة أعلى للطبيعي، ونحن نريد العكس).
-
-### `AutoencoderDetector`
-- `fit`: `model.fit(X, X)` — الهدف هو الإدخال نفسه.
-- `score`: متوسط مربّع الفرق بين الإدخال وإعادة البناء (MSE) لكل سجل.
-- نكتم `ConvergenceWarning` عمداً لأن عدد الدورات ثابت (60) بقرار تجريبي موثّق.
-
-`build_detector(name)` — مصنع مثل `build_classifier`.
-
----
-
-## 7. `models/hybrid.py` — قلب النظام
-
-### `NormalBaseline`
-"بصمة الطبيعي": `mean`, `std` لكل ميزة رقمية (بعد log1p) + `category_freq` (تكرار كل قيمة نصية).
-`from_frame(X_normal)` تبنيها من سجلات طبيعية. `std` الصفري يُستبدل بـ `1e-6` لتجنّب القسمة على صفر.
-
-### `HybridIDS`
-| الدالة | ماذا تفعل |
-|---|---|
-| `__init__` | يجمع: الملف، المعالجة، المصنِّف، الكاشف، البصمة، البيانات الوصفية |
-| `transform(df)` | اختيار الأعمدة + المعالجة ← مصفوفة أرقام |
-| `predict(df)` | **قاعدة الدمج**: يحسب رأي المصنِّف + درجة الشذوذ ← `final_label`, `is_alert`, `severity` |
-| `explain(row, top_k)` | z-score لكل ميزة مقابل البصمة ← أكبرها (≥ 2) + القيم النصية النادرة (< 1%) |
-| `refit_baseline(df_normal)` | يعيد تدريب الكاشف والبصمة على حركة شبكتك (80% تدريب / 20% معايرة) |
-| `save(path)` / `load(path)` | حفظ وتحميل بـ joblib |
-
-**قاعدة الدمج في الكود** (`predict`):
 ```python
 final = np.where(clf_label != "normal", clf_label,
          np.where(is_anomaly, "Unknown-Anomaly", "normal"))
 ```
 
-**⚠️ ملاحظة أمنية:** `joblib.load` يعتمد على `pickle` الذي **قد ينفّذ كوداً** عند التحميل. لا تحمّل نموذجاً من مصدر غير موثوق — نقطة جيدة لذكرها في مشروع أمن سيبراني.
+- `explain(row)` تحسب z-score لكل ميزة مقارنة بالطبيعي وترجع الأكبر، مع القيم النصية النادرة.
+- `refit_baseline(df_normal)` تعيد تدريب الكاشف على حركة شبكتنا (80% تدريب و 20% لحساب العتبة).
+- `save` و `load` بـ joblib. ملاحظة أمنية: joblib يستخدم pickle، فلا نحمل نموذجاً من مصدر غير موثوق.
 
----
+## evaluation/metrics.py و plots.py
 
-## 8. `evaluation/metrics.py` — المقاييس
+- `binary_metrics` تعطي accuracy, precision, detection rate, false alarm rate, f1, roc_auc.
+- `multiclass_metrics` لكل الفئات، و `detection_rate_by_group` نسبة الكشف لكل فئة.
+- `evaluate_hybrid` تقيّم الأوضاع الثلاثة (المصنف فقط، الكاشف فقط، الهجين) والهجمات الجديدة.
+- `plots.py` دالة لكل رسم (confusion, ROC, درجات الشذوذ, مقارنة النماذج, أهمية الميزات, الهجمات الجديدة, حساسية العتبة) وكلها تحفظ PNG.
 
-| الدالة | المُخرَج |
-|---|---|
-| `binary_metrics(y_true, y_pred, y_score)` | accuracy, precision, **detection_rate**, **false_alarm_rate**, f1, tp/fp/tn/fn, roc_auc |
-| `multiclass_metrics(y_true, y_pred)` | accuracy, f1_macro, f1_weighted, تقرير لكل فئة |
-| `detection_rate_by_group(is_alert, groups)` | نسبة الكشف لكل فئة (أو أي تجميع) |
-| `evaluate_hybrid(test_df, predictions)` | **التقييم الشامل**: الأوضاع الثلاثة + لكل فئة + الهجمات الجديدة |
-| `attack_score(predictions)` | درجة "هجوم" من المصنِّف لرسم ROC |
+## explain/importance.py
 
-## 9. `evaluation/plots.py` — الرسوم
-دالة لكل رسم: `plot_confusion_matrix`, `plot_roc_curves`, `plot_anomaly_scores`, `plot_model_comparison`, `plot_feature_importance`, `plot_novel_detection`. كلها تحفظ PNG بدقة 150 DPI عبر `_save`. نستخدم `matplotlib.use("Agg")` ليعمل الرسم بدون شاشة.
+`compute_permutation_importance` تخلط كل عمود أصلي وترى كم ينخفض الأداء.
 
-## 10. `explain/importance.py`
-`compute_permutation_importance(model, df, n_samples)` — يلفّ المعالجة + المصنِّف في `Pipeline` واحد حتى يخلط **الأعمدة الأصلية** (service كاملة، لا أعمدة One-Hot مفكّكة)، 5 تكرارات لكل ميزة.
+## live/flow.py
 
----
+يحول الحزم إلى اتصالات ثم إلى الـ 28 ميزة، بدون scapy حتى نختبره بحزم نصنعها يدوياً.
 
-## 11. `live/flow.py` — الحزم ← الميزات (بدون scapy)
+- `port_to_service` من رقم المنفذ إلى اسم الخدمة كما في NSL-KDD.
+- `PacketInfo` حزمة مبسطة، و `Connection` اتصال بالبايتات في الاتجاهين وأحداث TCP. `Connection.flag` تحسب SF / S0 / REJ ... من الأحداث.
+- `assemble_connections` تجمع الحزم في اتصالات، و `add_tcp_event` تسجل SYN و FIN و RST ومن أرسلها.
+- `connections_to_features` تحسب الميزات، ومعها `time_features` (آخر ثانيتين) و `host_features` (آخر 255 اتصالاً). `rate` قسمة تعطي صفراً إذا كان المقام صفراً.
 
-| العنصر | ماذا يفعل |
-|---|---|
-| `TCP_SERVICES`, `UDP_SERVICES`, `ICMP_SERVICES` | منفذ ← اسم الخدمة بتسميات NSL-KDD |
-| `port_to_service(protocol, port)` | المجهول: `< 1024` ← other، وغير ذلك ← private |
-| `PacketInfo` | حزمة مبسّطة (`frozen` = لا تتغيّر بعد الإنشاء) |
-| `Connection` | حالة اتصال: البايتات بالاتجاهين + أحداث TCP |
-| `Connection.flag` | **آلة الحالة** (State machine) التي تحوّل الأحداث إلى SF/S0/REJ/... |
-| `assemble_connections(packets, idle_timeout)` | يجمع الحزم باتجاهين في اتصالات |
-| `_record_tcp_event(conn, flags, from_originator)` | يسجّل SYN/SYN-ACK/FIN/RST ومن أرسلها |
-| `connections_to_features(connections)` | لكل اتصال: الأساسية + نافذة الثانيتين + نافذة الـ 255 اتصالاً |
-| `_time_features`, `_host_features` | حساب النسب داخل كل نافذة |
-| `_rate(part, total)` | قسمة آمنة (0 إذا المقام صفر) مقرّبة لخانتين كما في NSL-KDD |
+## live/capture.py
 
-**لماذا هو منفصل عن scapy؟** لنختبر منطق TCP بحزم نصنعها يدوياً (انظر `tests/test_flow.py`) دون شبكة أو صلاحيات.
+- `_require_scapy` تستورد scapy وتطلب فك ترويسات IP/TCP/UDP/ICMP فقط (فك الحمولة كان يسبب خطأ recursion أثناء الـ flood).
+- `_bigger_bpf_buffer` على الماك فقط: buffer الافتراضي 64KB يمتلئ أثناء nmap فتضيع حزم، فنكبّره.
+- `ip_payload_length` الطول من ترويسة IP، لأن tcpdump قد يقص الحزمة.
+- `to_packet_info`, `packets_to_features`, `read_pcap_features` من scapy إلى جدول ميزات.
+- `live_capture` تلتقط في الخلفية (AsyncSniffer) وتحلل كل `batch_seconds`، وكل اتصال يُرسل مرة واحدة فقط.
 
-## 12. `live/capture.py` — Scapy
+## alerts.py
 
-| الدالة | ماذا تفعل |
-|---|---|
-| `_require_scapy()` | رسالة خطأ واضحة إن لم تكن scapy مثبّتة + تفعيل فكّ الترويسات فقط |
-| `_decode_headers_only(scapy)` | يطلب من Scapy فكّ IP/TCP/UDP/ICMP فقط وترك الحمولة خاماً (منع انهيار "recursion depth" أثناء الـ flood). يُفعَّل مرة واحدة فقط |
-| `to_packet_info(pkt)` | حزمة scapy ← `PacketInfo` (أو None إن لم تكن IPv4) |
-| `_ip_payload_length(ip)` | الطول الحقيقي من ترويسة IP — لأن tcpdump قد يقصّ الحزمة (snaplen) |
-| `packets_to_features(packets)` | قائمة حزم ← جدول ميزات |
-| `read_pcap_features(path)` | ملف pcap ← جدول ميزات |
-| `live_capture(on_batch, interface, ..., should_stop)` | حلقة: التقاط دفعة ← ميزات بسياق 120 ث ← `on_batch` للجديد فقط. دفعة فاشلة لا توقف الحلقة. `should_stop` يوقفها عند إغلاق الصفحة |
+`group_incidents` تجمع التنبيهات حسب (المصدر، الهدف، النوع) في حادثة واحدة مع عدد الاتصالات والمنافذ. مثلاً 3,308 تنبيه من nmap تصبح حادثة واحدة.
 
-## 13. `alerts.py`
-`group_incidents(features, predictions)` — يجمع التنبيهات حسب (المصدر، الهدف، النوع) ← حادثة واحدة بعدد الاتصالات وعدد المنافذ المختلفة وأخطر سجل. **يعالج "إرهاق التنبيهات"**: 3,308 تنبيه ← حادثة واحدة.
+## pipeline/train.py
 
-## 14. `pipeline/train.py` — خطّ التدريب
+- `pick_classifier` تدرب المصنفات الأربعة وتختار الأفضل بـ macro-F1.
+- `pick_detector` تدرب الكاشفين على الطبيعي وتختار الأفضل بـ ROC-AUC.
+- `train_hybrid` تقسيم 80/20 ثم المعالجة ثم الاختيار ثم الحفظ في `artifacts/<run>/hybrid_ids.joblib`.
+- `threshold_sensitivity` الكشف والإنذار الكاذب عند 5 عتبات.
+- `evaluate_model` تقيم على ملفات الاختبار وترسم وتكتب `metrics.json`.
+- `run_training` تشغل تجربتي full و live وتكتب `reports/RESULTS.md`.
 
-| الدالة | ماذا تفعل |
-|---|---|
-| `model_path(cfg, run)` | `artifacts/<run>/hybrid_ids.joblib` |
-| `_select_classifier(...)` | يدرّب كل المرشّحين ← جدول مقارنة ← الأفضل بـ Macro-F1 |
-| `_select_detector(...)` | يدرّب الكواشف على الطبيعي ← يعاير ← الأفضل بـ ROC-AUC |
-| `train_hybrid(cfg, spec, train_df, run)` | تقسيم طبقي 80/20 ← معالجة ← اختيار ← تجميع ← حفظ (لأي مجموعة بيانات) |
-| `evaluate_model(cfg, model, run, selection, test_sets)` | تقييم على ملفات الاختبار + كل الرسوم + أهمية الميزات + `metrics.json` |
-| `threshold_sensitivity(model, test_df, pred)` | الكشف/الإنذار الكاذب عند 5 عتبات (محسوبة من التحقق) |
-| `run_training(cfg, profiles)` | تجربة NSL-KDD: الملفّان ← RESULTS.md |
+## pipeline/cicids_experiments.py
 
-## 14b. `pipeline/cicids_experiments.py`
-| الدالة | ماذا تفعل |
-|---|---|
-| `balanced_sample(df, normal_n, attack_cap)` | عيّنة تدريب متوازنة (النادر كاملاً، الكبير مقصوص) |
-| `run_random_split` | تجربة ①: الأيام مختلطة، 30% اختبار |
-| `run_temporal_split` | تجربة ②: تدريب الاثنين–الأربعاء، اختبار الخميس–الجمعة |
-| `run_cicids` | التجربتان ← RESULTS_CICIDS2017.md |
+- `balanced_sample` عينة تدريب: كل الهجمات النادرة، والكبيرة مقصوصة.
+- `run_random_split` الأيام مختلطة و 30% اختبار.
+- `run_temporal_split` تدريب الاثنين إلى الأربعاء واختبار الخميس والجمعة.
 
-## 15. `pipeline/report.py`
-`write_report(cfg, results, filename, title)` ← `reports/RESULTS.md` (أو `RESULTS_CICIDS2017.md`) بالعربية من الأرقام مباشرةً (لا نسخ يدوي).
+## pipeline/report.py
 
-## 16. `cli.py` — الأوامر
-كل أمر دالة `cmd_*`، و`build_parser()` يربط الأسماء بالدوال. `_print_alerts` يطبع الملخّص ثم الحوادث مع شرحها. `_load_model` يقبل `--model` لنموذج مخصّص.
+`write_report` تكتب ملف النتائج من الأرقام مباشرة.
 
-## 17. `web/` — الموقع ⭐ (ما تعرضونه أمام اللجنة)
+## cli.py
 
-### كيف يعمل الموقع (بمثال المطعم)
-- **المتصفّح** = الزبون: يطلب ("حلّل هذا الملف").
-- **`server.py`** = النادل: يستلم الطلب، يأخذه للمطبخ، ويرجع بالنتيجة.
-- **النماذج** = الطبّاخ: تحكم على الاتصالات.
-- الطلبات والردود بصيغة **JSON** (نص منظّم)، والبثّ الحي بتقنية **SSE** (الخادم يرسل أسطراً متتالية دون أن يطلبها المتصفّح كل مرة).
+كل أمر دالة `cmd_*` (download, train, predict, pcap, live, baseline, web)، و `build_parser` تربط الأسماء بالدوال. `print_alerts` تطبع الملخص والحوادث.
 
-### `web/server.py` — الخادم (FastAPI)
+## web/server.py
 
-| المسار (API) | ماذا يفعل |
-|---|---|
-| `GET /` | يرسل الصفحة `index.html` |
-| `GET /api/status` | النماذج والملفات المتاحة، وهل الخادم يعمل بـ root |
-| `GET /api/results/{run}` | نتائج تجربة من `reports/<run>/metrics.json` |
-| `POST /api/analyze` | يحلّل pcap (جاهز أو مرفوع) ← ملخّص + حوادث مشروحة + نقاط الشريط |
-| `GET /api/replay` | **بثّ** ملف pcap اتصالاً اتصالاً بتوقيته الأصلي (قسم Tape) |
-| `GET /api/live` | **بثّ** الالتقاط الحي من كرت الشبكة (يحتاج root) |
-| `GET /api/range` | حالة ميدان الهجوم (ما يعمل الآن) |
-| `POST /api/range/command` | أمر من طرفية الموقع (قائمة ثابتة فقط) |
-| `POST /api/range/auto` | تشغيل/إيقاف وضع الهجوم التلقائي |
-| `POST /api/range/background` | تشغيل/إيقاف التصفّح الطبيعي |
-| `GET /api/range/console` | **بثّ** أسطر الطرفية (مخرجات nmap الحقيقية) |
-| `GET /api/lab/presets` و `POST /api/lab` | المختبر: نقاط البداية، وقرار النظام على اتصال واحد |
+خادم FastAPI:
 
-| دالة مساعدة | ماذا تفعل |
-|---|---|
-| `_features_for(path)` | تحويل pcap ← ميزات **مرة واحدة فقط**: قفل (لا قراءة مزدوجة) + تخزين في الذاكرة وعلى القرص `data/cache/` |
-| `_pcap_model(custom)` | النموذج الحي، أو نسخته المضبوطة على طبيعي الجهاز |
-| `_event(...)` | يحوّل اتصالاً واحداً إلى حدث للبثّ؛ يحسب الشرح فقط لأول اتصال من كل حادثة (توفيراً للوقت) |
-| `_local_only(request)` | يرفض أوامر الهجوم إن لم تأتِ من نفس الجهاز |
-| `_sse(event, data)` | صيغة سطر البثّ: `event: …` ثم `data: {JSON}` |
+- `GET /` الصفحة.
+- `GET /api/status` النماذج والعينات المتاحة وهل الخادم يعمل بـ root.
+- `GET /api/results/{run}` نتائج تجربة من `metrics.json`.
+- `POST /api/analyze` تحليل pcap (عينة أو ملف مرفوع) وإرجاع الحوادث.
+- `GET /api/live` بث الالتقاط الحي (SSE، يحتاج root).
+- `GET /api/range` و `POST /api/range/command` و `GET /api/range/console` ميدان الهجوم وطرفيته.
+- `POST /api/lab` قرار النظام على اتصال واحد نكتب قيمه بأيدينا.
 
-### `web/attack_range.py` — ميدان الهجوم
+`sample_features` تحول ملف pcap إلى ميزات مرة واحدة وتحفظها في `data/cache/`. `local_only` ترفض أوامر الهجوم إن لم تأت من نفس الجهاز.
 
-| العنصر | ماذا يفعل |
-|---|---|
-| `TARGET = "127.0.0.1"` | الهدف **ثابت في الكود** — لا يُقبل غيره |
-| `_VictimServer` | خادم ويب "ضحية" على المنفذ 8088؛ يتجاهل أخطاء BrokenPipe المتوقّعة تحت الإغراق |
-| `ATTACKS` | الهجمات الثلاث: الاسم، الأداة الحقيقية، الوصف العربي، المتوقّع |
-| `ensure_victim()` | يشغّل الضحية مرة واحدة |
-| `set_background(on)` | تصفّح "بشري": طلب كل 0.3–1.5 ثانية |
-| `launch(attack_id)` | يشغّل هجوماً في خيط خلفي (thread) |
-| `_nmap(args)` | يشغّل nmap الحقيقي ويبثّ مخرجاته **سطراً سطراً** إلى طرفية الموقع |
-| `_http_flood()` | 3000 طلب عبر 100 خيط متوازٍ، مع تقدّم كل 500 طلب |
-| `set_auto(on)` / `_auto_loop()` | وضع الهجوم: مسح ← توقّف 10 ث ← إغراق ← ... حتى الإيقاف |
-| `run_command(text)` | **قائمة بيضاء** (whitelist) من 8 أوامر. أي نص آخر ← "command not allowed". السبب: الخادم root، وتنفيذ نصّ حرّ = ثغرة RCE |
-| `say(text, stream)` | يضيف سطراً لطرفية الموقع (cmd / out / info / err) |
+## web/attack_range.py
 
-### `web/static/` — الصفحة نفسها
+- `TARGET = "127.0.0.1"` الهدف ثابت.
+- `VictimServer` خادم ويب ضحية على المنفذ 8088.
+- `ATTACKS` الهجمات الثلاث (port scan, service scan, http flood).
+- `set_browsing` تصفح طبيعي في الخلفية، `launch` تشغل هجوماً، `_nmap` تشغل nmap الحقيقي وتبث مخرجاته، `_flood` 3000 طلب من 100 خيط.
+- `set_auto` و `_auto_loop` تشغيل الهجمات بالتتابع.
+- `run_command` قائمة أوامر ثابتة فقط. أي نص آخر يعطي "command not allowed"، لأن الخادم يعمل بـ root.
 
-| الملف | ماذا فيه |
-|---|---|
-| `index.html` | هيكل الأقسام الستة |
-| `styles.css` | التصميم: أسود، خطوط شبكية، الألوان تعني قرارات (رمادي طبيعي، برتقالي مسح، أحمر هجوم، سماوي شذوذ) |
-| `app.js` | المنطق: `Tape` (رسم الشريط على Canvas)، الرسوم البيانية (SVG يدوي بدون مكتبات)، الاتصال بالـ API والبثّ |
-| `fonts/` | Departure Mono و IBM Plex Sans Arabic — مضمّنة ليعمل الموقع بدون إنترنت (رخصة مفتوحة OFL) |
+## web/static/
 
-**`Tape` في `app.js`:** كل اتصال خط عمودي؛ المحور الأفقي = الزمن، الارتفاع = log(درجة الشذوذ)، الخط المتقطّع = العتبة. في الوضع الحي يتحرّك الزمن مع الساعة الحقيقية، وكل هجوم يُطلَق يُرسم كعلامة "▶ Port scan".
+`index.html` الأقسام الأربعة (النتائج، التحليل، المراقبة الحية، المختبر)، `style.css` تنسيق بسيط، `main.js` يجلب البيانات من الـ API ويعرضها.
 
-### `app/dashboard.py` — النسخة القديمة (Streamlit)
-لوحة سابقة ما زالت تعمل (`streamlit run app/dashboard.py`)، لكن الموقع الجديد يغني عنها. نحتفظ بها كنسخة احتياطية.
+## tests/
 
-## 18. `tools/make_demo_pcap.py`
-يصنع `demo_normal.pcap` و`demo_attack.pcap` بـ Scapy: جلسات HTTP كاملة، DNS، SYN Flood، Port Scan، Ping Sweep. **لا يرسل شيئاً لأي شبكة.**
-
-## 19. `tests/` — 38 اختباراً
-| الملف | يختبر |
-|---|---|
-| `conftest.py` | يصنع بيانات صناعية "منطقية" بأعمدة NSL-KDD |
-| `test_data_and_features.py` | الفئات، ملفات الميزات، المعالجة، الخدمات المجهولة، الهجمات الجديدة |
-| `test_models.py` | كل مصنِّف، كل كاشف، قاعدة الدمج، التفسير، الحفظ/التحميل، المقاييس بقيم محسوبة يدوياً، تجميع الحوادث، إعادة ضبط خط الأساس |
-| `test_flow.py` | الخدمات، SF/S0/REJ، ميزات SYN flood، انتهاء المهلة، الطول الحقيقي مع snaplen، تفعيل فكّ الترويسات أكثر من مرة |
-| `test_cicids.py` | إصلاح الأسماء، قائمة الميزات، signed log، المعالجة، العيّنة المتوازنة |
+38 اختباراً: `conftest.py` يصنع بيانات صغيرة، `test_data_and_features.py` البيانات والمعالجة، `test_models.py` النماذج والدمج والشرح والمقاييس، `test_flow.py` بناء الاتصالات والالتقاط، `test_cicids.py` بيانات CIC-IDS2017.
 
 </div>

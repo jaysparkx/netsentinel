@@ -30,7 +30,7 @@
       "WebAttack",
       "normal"
     ],
-    "trained_at": "2026-11-03 13:13:02",
+    "trained_at": "2026-11-17 10:44:08",
     "baseline_source": "CIC-IDS2017"
   },
   "validation": {
@@ -40,28 +40,28 @@
         "accuracy": 0.9977,
         "detection_rate": 0.9958,
         "false_alarm_rate": 0.0012,
-        "train_seconds": 233.5
+        "train_seconds": 58.8
       },
       "hist_gradient_boosting": {
         "f1_macro": 0.9668,
         "accuracy": 0.9967,
         "detection_rate": 0.9991,
         "false_alarm_rate": 0.0042,
-        "train_seconds": 39.0
+        "train_seconds": 14.6
       },
       "logistic_regression": {
         "f1_macro": 0.6446,
         "accuracy": 0.9166,
         "detection_rate": 0.9918,
         "false_alarm_rate": 0.1171,
-        "train_seconds": 34.1
+        "train_seconds": 23.0
       },
       "mlp": {
         "f1_macro": 0.9733,
         "accuracy": 0.9963,
         "detection_rate": 0.9929,
         "false_alarm_rate": 0.0017,
-        "train_seconds": 33.9
+        "train_seconds": 23.1
       }
     },
     "detector_comparison": {
@@ -70,14 +70,14 @@
         "detection_rate": 0.0245,
         "false_alarm_rate": 0.01,
         "threshold": 0.621556,
-        "train_seconds": 3.8
+        "train_seconds": 2.0
       },
       "autoencoder": {
         "roc_auc": 0.968,
         "detection_rate": 0.6026,
         "false_alarm_rate": 0.01,
         "threshold": 0.170207,
-        "train_seconds": 57.8
+        "train_seconds": 27.4
       }
     }
   },

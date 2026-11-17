@@ -25,7 +25,7 @@
       "Heartbleed",
       "normal"
     ],
-    "trained_at": "2026-11-03 13:20:25",
+    "trained_at": "2026-11-17 10:48:23",
     "baseline_source": "CIC-IDS2017"
   },
   "validation": {
@@ -35,28 +35,28 @@
         "accuracy": 0.9988,
         "detection_rate": 0.9969,
         "false_alarm_rate": 0.0006,
-        "train_seconds": 141.8
+        "train_seconds": 56.6
       },
       "hist_gradient_boosting": {
         "f1_macro": 0.9987,
         "accuracy": 0.9988,
         "detection_rate": 0.9987,
         "false_alarm_rate": 0.0012,
-        "train_seconds": 45.7
+        "train_seconds": 49.2
       },
       "logistic_regression": {
         "f1_macro": 0.861,
         "accuracy": 0.9719,
         "detection_rate": 0.9865,
         "false_alarm_rate": 0.032,
-        "train_seconds": 16.2
+        "train_seconds": 13.3
       },
       "mlp": {
         "f1_macro": 0.9114,
         "accuracy": 0.9972,
         "detection_rate": 0.992,
         "false_alarm_rate": 0.0011,
-        "train_seconds": 22.7
+        "train_seconds": 16.9
       }
     },
     "detector_comparison": {
@@ -65,14 +65,14 @@
         "detection_rate": 0.0551,
         "false_alarm_rate": 0.01,
         "threshold": 0.614556,
-        "train_seconds": 2.4
+        "train_seconds": 1.8
       },
       "autoencoder": {
         "roc_auc": 0.9571,
         "detection_rate": 0.5316,
         "false_alarm_rate": 0.01,
         "threshold": 0.13445,
-        "train_seconds": 22.5
+        "train_seconds": 19.4
       }
     }
   },

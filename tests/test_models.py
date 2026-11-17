@@ -1,5 +1,3 @@
-"""اختبارات النماذج والنظام الهجين والتقييم."""
-
 import numpy as np
 import pytest
 
@@ -8,7 +6,7 @@ from netsentinel.evaluation.metrics import binary_metrics, evaluate_hybrid
 from netsentinel.features.preprocessing import build_preprocessor, select_features
 from netsentinel.models.anomaly import build_detector
 from netsentinel.models.hybrid import UNKNOWN_ANOMALY, HybridIDS, NormalBaseline
-from netsentinel.models.supervised import SUPERVISED_MODELS, build_classifier
+from netsentinel.models.supervised import CLASSIFIER_NAMES, build_classifier
 
 
 @pytest.fixture(scope="module")
@@ -24,7 +22,7 @@ def hybrid(train_frame) -> HybridIDS:
     return HybridIDS(spec, prep, clf, det, baseline)
 
 
-@pytest.mark.parametrize("name", list(SUPERVISED_MODELS))
+@pytest.mark.parametrize("name", list(CLASSIFIER_NAMES))
 def test_every_classifier_trains(train_frame, name):
     spec = nsl_kdd_spec("live")
     prep = build_preprocessor(spec)
@@ -54,10 +52,8 @@ def test_hybrid_predict_columns_and_fusion_rule(hybrid, test_frame):
     pred = hybrid.predict(test_frame)
     assert len(pred) == len(test_frame)
     assert {"final_label", "is_alert", "severity", "anomaly_score"} <= set(pred.columns)
-    # قاعدة الدمج: إذا قال المصنِّف هجوم → final = رأيه
     attacks = pred["classifier_label"] != "normal"
     assert (pred.loc[attacks, "final_label"] == pred.loc[attacks, "classifier_label"]).all()
-    # إذا قال طبيعي وكان شاذّاً → Unknown-Anomaly
     unknown = (~attacks) & (pred["is_anomaly"] == 1)
     assert (pred.loc[unknown, "final_label"] == UNKNOWN_ANOMALY).all()
 
@@ -84,8 +80,8 @@ def test_binary_metrics_known_values():
     y_true = np.array([1, 1, 1, 1, 0, 0, 0, 0, 0, 0])
     y_pred = np.array([1, 1, 1, 0, 1, 0, 0, 0, 0, 0])
     m = binary_metrics(y_true, y_pred)
-    assert m["detection_rate"] == 0.75        # 3 من 4 هجمات
-    assert m["false_alarm_rate"] == round(1 / 6, 4)  # 1 من 6 طبيعي
+    assert m["detection_rate"] == 0.75
+    assert m["false_alarm_rate"] == round(1 / 6, 4)
     assert (m["tp"], m["fp"], m["tn"], m["fn"]) == (3, 1, 5, 1)
 
 
@@ -107,7 +103,7 @@ def test_incidents_group_alerts_by_source_target_and_label():
     })
     incidents = group_incidents(features, predictions)
     assert len(incidents) == 2
-    assert incidents.iloc[0]["final_label"] == "DoS"            # الأخطر أولاً
+    assert incidents.iloc[0]["final_label"] == "DoS"
     scan = incidents[incidents["final_label"] == "Probe"].iloc[0]
     assert (scan["connections"], scan["dst_ports"], scan["representative"]) == (3, 3, 1)
 
@@ -118,5 +114,4 @@ def test_refit_baseline_calibrates_on_shuffled_sample(hybrid, train_frame):
     model = copy.deepcopy(hybrid)
     model.refit_baseline(normal, percentile=99)
     assert model.metadata["baseline_source"] == "custom"
-    # الطبيعي نفسه يجب ألا يُنذر إلا نادراً بعد إعادة الضبط
     assert model.predict(normal)["is_anomaly"].mean() < 0.05

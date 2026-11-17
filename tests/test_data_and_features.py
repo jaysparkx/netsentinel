@@ -1,5 +1,3 @@
-"""اختبارات المخطّط والمعالجة المسبقة."""
-
 import numpy as np
 import pytest
 
@@ -24,7 +22,7 @@ def test_live_profile_has_no_content_features():
     assert "num_failed_logins" not in FEATURE_PROFILES["live"]
     assert "root_shell" not in FEATURE_PROFILES["live"]
     assert len(FEATURE_PROFILES["live"]) == 28
-    assert "num_outbound_cmds" not in FEATURE_PROFILES["full"]   # عمود ثابت محذوف
+    assert "num_outbound_cmds" not in FEATURE_PROFILES["full"]
 
 
 @pytest.mark.parametrize("profile", ["full", "live"])
@@ -43,7 +41,7 @@ def test_preprocessor_ignores_unseen_categories(train_frame):
     unseen = train_frame.head(3).copy()
     unseen["service"] = "brand_new_service"
     X = prep.transform(select_features(unseen, spec))
-    assert X.shape[0] == 3   # لا يتعطّل مع خدمة لم يرها
+    assert X.shape[0] == 3
 
 
 def test_mark_novel_attacks(train_frame, test_frame):

@@ -1,41 +1,15 @@
-"""
-خطّ التدريب الكامل (End-to-End Training Pipeline) — يعمل على أي مجموعة بيانات.
-
-لكل تجربة ننفّذ:
-
-    ① تقسيم بيانات التدريب إلى تدريب (80%) وتحقق (20%) — تقسيم طبقي (Stratified)
-       حتى تبقى نسب الفئات النادرة نفسها في الجزأين.
-    ② تدريب المعالجة المسبقة على جزء التدريب فقط.
-    ③ تدريب كل المصنِّفات المرشّحة ← اختيار الأفضل حسب Macro-F1 على التحقق.
-    ④ تدريب كواشف الشذوذ على "الطبيعي" فقط ← معايرة العتبة على طبيعي التحقق
-       ← اختيار الأفضل حسب ROC-AUC.
-    ⑤ تجميع النظام الهجين وحفظه.
-    ⑥ التقييم على مجموعات الاختبار (بيانات لم يرها النظام إطلاقاً)
-       + رسوم + أهمية الميزات.
-
-القاعدة الذهبية: مجموعة الاختبار لا تُستخدم أبداً في أي قرار (اختيار نموذج،
-عتبة...). تُستخدم مرة واحدة في النهاية فقط ← نتائج صادقة غير متحيّزة.
-
-هذا الملف يحوي الخطوات العامة + تجربة NSL-KDD. تجارب CIC-IDS2017 في
-pipeline/cicids_experiments.py وتستخدم نفس الدوال.
-"""
-
-from __future__ import annotations
-
 import json
 import logging
 import time
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 
-from netsentinel.config import Config
 from netsentinel.data.loader import load_split, mark_novel_attacks
 from netsentinel.data.schema import NORMAL_LABEL
-from netsentinel.data.spec import DatasetSpec, nsl_kdd_spec
+from netsentinel.data.spec import nsl_kdd_spec
 from netsentinel.evaluation import plots
 from netsentinel.evaluation.metrics import attack_score, binary_metrics, evaluate_hybrid, multiclass_metrics
 from netsentinel.explain.importance import compute_permutation_importance
@@ -46,17 +20,16 @@ from netsentinel.models.supervised import build_classifier
 
 logger = logging.getLogger(__name__)
 
-# النسب المئوية التي نجرّبها في تحليل حساسية العتبة (95 = عتبة منخفضة، 99.99 = مرتفعة جداً)
+# other thresholds we try after training (percentiles of normal validation scores)
 SENSITIVITY_PERCENTILES = [95.0, 99.0, 99.5, 99.9, 99.99]
 
 
-def model_path(cfg: Config, run: str) -> Path:
-    """مسار النموذج المحفوظ لتجربة: artifacts/<run>/hybrid_ids.joblib"""
+def model_path(cfg, run):
     return cfg.paths.artifacts_dir / run / "hybrid_ids.joblib"
 
 
-def _select_classifier(cfg, X_tr, y_tr, X_val, y_val, class_names) -> tuple[object, pd.DataFrame]:
-    """③ يدرّب كل مصنِّف مرشّح ويُرجع الأفضل + جدول المقارنة."""
+def pick_classifier(cfg, X_tr, y_tr, X_val, y_val, class_names):
+    """Train every candidate classifier, keep the best one by macro-F1 on validation."""
     rows, fitted = {}, {}
     for name in cfg.supervised.candidates:
         start = time.perf_counter()
@@ -72,17 +45,17 @@ def _select_classifier(cfg, X_tr, y_tr, X_val, y_val, class_names) -> tuple[obje
             "train_seconds": round(time.perf_counter() - start, 1),
         }
         fitted[name] = clf
-        logger.info("  %-24s Macro-F1=%.4f  DR=%.4f  FAR=%.4f  (%.1fs)", name, multi["f1_macro"],
+        logger.info("  %-24s f1=%.4f dr=%.4f far=%.4f (%.1fs)", name, multi["f1_macro"],
                     binary["detection_rate"], binary["false_alarm_rate"], rows[name]["train_seconds"])
 
     table = pd.DataFrame(rows).T
     best = table[cfg.supervised.selection_metric].astype(float).idxmax()
-    logger.info("  ★ أفضل مصنِّف: %s", best)
+    logger.info("  best classifier: %s", best)
     return fitted[best], table
 
 
-def _select_detector(cfg, X_tr_normal, X_val, y_val_attack) -> tuple[object, pd.DataFrame]:
-    """④ يدرّب كواشف الشذوذ على الطبيعي فقط ويختار الأفضل حسب ROC-AUC."""
+def pick_detector(cfg, X_tr_normal, X_val, y_val_attack):
+    """Train anomaly detectors on normal rows only, keep the best one by ROC-AUC."""
     rows, fitted = {}, {}
     X_val_normal = X_val[y_val_attack == 0]
     for name in cfg.anomaly.candidates:
@@ -99,36 +72,33 @@ def _select_detector(cfg, X_tr_normal, X_val, y_val_attack) -> tuple[object, pd.
             "train_seconds": round(time.perf_counter() - start, 1),
         }
         fitted[name] = det
-        logger.info("  %-24s ROC-AUC=%.4f  DR=%.4f  FAR=%.4f  (%.1fs)", name, rows[name]["roc_auc"],
+        logger.info("  %-24s auc=%.4f dr=%.4f far=%.4f (%.1fs)", name, rows[name]["roc_auc"],
                     binary["detection_rate"], binary["false_alarm_rate"], rows[name]["train_seconds"])
 
     table = pd.DataFrame(rows).T
     best = table["roc_auc"].astype(float).idxmax()
-    logger.info("  ★ أفضل كاشف شذوذ: %s", best)
+    logger.info("  best detector: %s", best)
     return fitted[best], table
 
 
-def train_hybrid(cfg: Config, spec: DatasetSpec, train_df: pd.DataFrame, run: str) -> tuple[HybridIDS, dict]:
-    """①–⑤ تدريب نظام هجين كامل على train_df وحفظه في artifacts/<run>/."""
-    logger.info("═══ تدريب: %s / %s ═══", spec.name, run)
-    tr, val = train_test_split(
-        train_df, test_size=cfg.data.validation_size, stratify=train_df["category"], random_state=cfg.seed,
-    )
+def train_hybrid(cfg, spec, train_df, run):
+    logger.info("training %s / %s", spec.name, run)
+    tr, val = train_test_split(train_df, test_size=cfg.data.validation_size,
+                               stratify=train_df["category"], random_state=cfg.seed)
 
     preprocessor = build_preprocessor(spec)
     X_tr = preprocessor.fit_transform(select_features(tr, spec))
     X_val = preprocessor.transform(select_features(val, spec))
-    logger.info("التدريب: %d سجل — التحقق: %d — أبعاد بعد المعالجة: %d", len(tr), len(val), X_tr.shape[1])
+    logger.info("train %d, validation %d, %d columns after encoding", len(tr), len(val), X_tr.shape[1])
 
-    logger.info("── المصنِّفات المُشرَفة ──")
-    classifier, clf_table = _select_classifier(cfg, X_tr, tr["category"], X_val, val["category"], spec.class_names)
+    classifier, clf_table = pick_classifier(cfg, X_tr, tr["category"], X_val, val["category"], spec.class_names)
 
-    logger.info("── كواشف الشذوذ (تدريب على الطبيعي فقط) ──")
     tr_normal = (tr["is_attack"] == 0).to_numpy()
-    detector, det_table = _select_detector(cfg, X_tr[tr_normal], X_val, val["is_attack"].to_numpy())
-    # نحفظ عتبات بديلة محسوبة من طبيعي التحقق (لا من الاختبار) لتحليل الحساسية لاحقاً
+    detector, det_table = pick_detector(cfg, X_tr[tr_normal], X_val, val["is_attack"].to_numpy())
+
+    # extra thresholds from validation data, used later for the threshold table
     val_normal_scores = detector.score(X_val[(val["is_attack"] == 0).to_numpy()])
-    candidate_thresholds = {str(p): float(np.percentile(val_normal_scores, p)) for p in SENSITIVITY_PERCENTILES}
+    thresholds = {str(p): float(np.percentile(val_normal_scores, p)) for p in SENSITIVITY_PERCENTILES}
 
     model = HybridIDS(
         spec=spec,
@@ -142,8 +112,9 @@ def train_hybrid(cfg: Config, spec: DatasetSpec, train_df: pd.DataFrame, run: st
             "classifier": clf_table[cfg.supervised.selection_metric].astype(float).idxmax(),
             "detector": det_table["roc_auc"].astype(float).idxmax(),
             "threshold_percentile": cfg.anomaly.threshold_percentile,
-            "candidate_thresholds": candidate_thresholds,
-            "n_train": len(tr), "n_validation": len(val),
+            "candidate_thresholds": thresholds,
+            "n_train": len(tr),
+            "n_validation": len(val),
             "n_features": len(spec.features),
             "n_encoded_features": int(X_tr.shape[1]),
             "train_classes": sorted(train_df["category"].unique().tolist()),
@@ -155,73 +126,14 @@ def train_hybrid(cfg: Config, spec: DatasetSpec, train_df: pd.DataFrame, run: st
     return model, {"classifier_comparison": clf_table, "detector_comparison": det_table}
 
 
-def evaluate_model(
-    cfg: Config, model: HybridIDS, run: str, selection: dict, test_sets: dict[str, pd.DataFrame],
-) -> dict:
-    """⑥ التقييم النهائي على كل مجموعة اختبار + الرسوم + أهمية الميزات + metrics.json."""
-    spec = model.spec
-    out_dir = cfg.paths.reports_dir / run
-    fig_dir = out_dir / "figures"
-    results: dict = {
-        "run": run,
-        "profile": run,
-        "dataset": spec.name,
-        "metadata": model.metadata,
-        "validation": {k: v.to_dict(orient="index") for k, v in selection.items()},
-        "test": {},
-    }
-    plots.plot_model_comparison(
-        selection["classifier_comparison"][["f1_macro", "accuracy", "detection_rate"]].astype(float),
-        fig_dir / "model_comparison.png",
-    )
-
-    for split, test_df in test_sets.items():
-        start = time.perf_counter()
-        pred = model.predict(test_df)
-        metrics = evaluate_hybrid(test_df, pred, spec.class_names)
-        results["test"][split] = metrics
-        h, c = metrics["hybrid"], metrics["classifier_only"]
-        logger.info("[%s] Hybrid: DR=%.4f FAR=%.4f F1=%.4f | Classifier: DR=%.4f FAR=%.4f  (%d سجل، %.0fs)",
-                    split, h["detection_rate"], h["false_alarm_rate"], h["f1"],
-                    c["detection_rate"], c["false_alarm_rate"], len(test_df), time.perf_counter() - start)
-
-        tag = split.replace("+", "plus")
-        plots.plot_confusion_matrix(test_df["category"], pred["classifier_label"], fig_dir / f"confusion_{tag}.png",
-                                    f"Confusion matrix — {split} ({run})", spec.class_names)
-        plots.plot_roc_curves(
-            test_df["is_attack"].to_numpy(),
-            {"Classifier": attack_score(pred), "Anomaly detector": pred["anomaly_score"].to_numpy()},
-            fig_dir / f"roc_{tag}.png", f"ROC — {split} ({run})",
-        )
-        plots.plot_anomaly_scores(pred["anomaly_score"].to_numpy(), test_df["is_attack"].to_numpy(),
-                                  model.detector.threshold_, fig_dir / f"anomaly_scores_{tag}.png")
-        if "novel_attacks" in metrics:
-            plots.plot_novel_detection(metrics["novel_attacks"], fig_dir / f"novel_detection_{tag}.png")
-        metrics["threshold_sensitivity"] = threshold_sensitivity(model, test_df, pred)
-        plots.plot_threshold_sensitivity(metrics["threshold_sensitivity"], fig_dir / f"threshold_sensitivity_{tag}.png")
-
-    logger.info("حساب أهمية الميزات (Permutation Importance)...")
-    first_test = next(iter(test_sets.values()))
-    importance = compute_permutation_importance(
-        model, first_test, cfg.evaluation.permutation_importance_samples, cfg.seed)
-    results["feature_importance"] = importance.round(5).to_dict()
-    plots.plot_feature_importance(importance, fig_dir / "feature_importance.png")
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "metrics.json").write_text(
-        json.dumps(results, indent=2, ensure_ascii=False, default=_json_default), encoding="utf-8")
-    return results
-
-
-def threshold_sensitivity(model: HybridIDS, test_df: pd.DataFrame, pred: pd.DataFrame) -> list[dict]:
-    """
-    تحليل حساسية العتبة: كيف يتغيّر الكشف والإنذار الكاذب للنظام الهجين لو
-    اخترنا عتبة أخرى؟ كل العتبات محسوبة من طبيعي التحقق وقت التدريب، فهذا
-    التحليل يعرض "منحنى التشغيل" دون أن نختار شيئاً بناءً على الاختبار.
-    """
+def threshold_sensitivity(model, test_df, pred):
     y = test_df["is_attack"].to_numpy()
     clf_alert = pred["classifier_label"].to_numpy() != NORMAL_LABEL
-    novel = test_df["is_novel"].to_numpy() == 1 if "is_novel" in test_df.columns else np.zeros(len(y), bool)
+    if "is_novel" in test_df.columns:
+        novel = test_df["is_novel"].to_numpy() == 1
+    else:
+        novel = np.zeros(len(y), bool)
+
     rows = []
     for pct, thr in model.metadata.get("candidate_thresholds", {}).items():
         alert = (clf_alert | (pred["anomaly_score"].to_numpy() > thr)).astype(int)
@@ -235,26 +147,76 @@ def threshold_sensitivity(model: HybridIDS, test_df: pd.DataFrame, pred: pd.Data
     return rows
 
 
-def _json_default(obj):
+def evaluate_model(cfg, model, run, selection, test_sets):
+    spec = model.spec
+    out_dir = cfg.paths.reports_dir / run
+    fig_dir = out_dir / "figures"
+    results = {
+        "run": run,
+        "profile": run,
+        "dataset": spec.name,
+        "metadata": model.metadata,
+        "validation": {k: v.to_dict(orient="index") for k, v in selection.items()},
+        "test": {},
+    }
+    comparison = selection["classifier_comparison"][["f1_macro", "accuracy", "detection_rate"]].astype(float)
+    plots.plot_model_comparison(comparison, fig_dir / "model_comparison.png")
+
+    for split, test_df in test_sets.items():
+        pred = model.predict(test_df)
+        metrics = evaluate_hybrid(test_df, pred, spec.class_names)
+        results["test"][split] = metrics
+        h, c = metrics["hybrid"], metrics["classifier_only"]
+        logger.info("[%s] hybrid dr=%.4f far=%.4f | classifier dr=%.4f far=%.4f", split,
+                    h["detection_rate"], h["false_alarm_rate"], c["detection_rate"], c["false_alarm_rate"])
+
+        tag = split.replace("+", "plus")
+        plots.plot_confusion_matrix(test_df["category"], pred["classifier_label"],
+                                    fig_dir / f"confusion_{tag}.png", f"Confusion matrix - {split} ({run})",
+                                    spec.class_names)
+        scores = {"Classifier": attack_score(pred), "Anomaly detector": pred["anomaly_score"].to_numpy()}
+        plots.plot_roc_curves(test_df["is_attack"].to_numpy(), scores, fig_dir / f"roc_{tag}.png",
+                              f"ROC - {split} ({run})")
+        plots.plot_anomaly_scores(pred["anomaly_score"].to_numpy(), test_df["is_attack"].to_numpy(),
+                                  model.detector.threshold_, fig_dir / f"anomaly_scores_{tag}.png")
+        if "novel_attacks" in metrics:
+            plots.plot_novel_detection(metrics["novel_attacks"], fig_dir / f"novel_detection_{tag}.png")
+        metrics["threshold_sensitivity"] = threshold_sensitivity(model, test_df, pred)
+        plots.plot_threshold_sensitivity(metrics["threshold_sensitivity"], fig_dir / f"threshold_sensitivity_{tag}.png")
+
+    logger.info("permutation importance...")
+    first_test = next(iter(test_sets.values()))
+    importance = compute_permutation_importance(model, first_test, cfg.evaluation.permutation_importance_samples,
+                                                cfg.seed)
+    results["feature_importance"] = importance.round(5).to_dict()
+    plots.plot_feature_importance(importance, fig_dir / "feature_importance.png")
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with open(out_dir / "metrics.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2, default=_to_python)
+    return results
+
+
+def _to_python(obj):
     if isinstance(obj, (np.integer, np.floating)):
         return obj.item()
     raise TypeError(type(obj))
 
 
-def run_training(cfg: Config, profiles: list[str] | None = None) -> dict[str, dict]:
-    """تجربة NSL-KDD: يدرّب ويقيّم ملفّي الميزات full و live ويولّد RESULTS.md."""
+def run_training(cfg, profiles=None):
+    """NSL-KDD experiment: train the full and live profiles and write RESULTS.md."""
     from netsentinel.pipeline.report import write_report
 
     np.random.seed(cfg.seed)
     train_df = load_split(cfg.paths.raw_dir, "KDDTrain+")
-    test_sets = {
-        split: mark_novel_attacks(load_split(cfg.paths.raw_dir, split), train_df)
-        for split in cfg.evaluation.test_sets
-    }
-    all_results = {}
+    test_sets = {}
+    for split in cfg.evaluation.test_sets:
+        test_sets[split] = mark_novel_attacks(load_split(cfg.paths.raw_dir, split), train_df)
+
+    results = {}
     for profile in profiles or cfg.data.feature_profiles:
         model, selection = train_hybrid(cfg, nsl_kdd_spec(profile), train_df, run=profile)
-        all_results[profile] = evaluate_model(cfg, model, profile, selection, test_sets)
-    report = write_report(cfg, all_results, "RESULTS.md", "تقرير نتائج NetSentinel — NSL-KDD")
-    logger.info("✓ اكتمل. التقرير: %s", report)
-    return all_results
+        results[profile] = evaluate_model(cfg, model, profile, selection, test_sets)
+    path = write_report(cfg, results, "RESULTS.md", "NetSentinel results - NSL-KDD")
+    logger.info("done, report: %s", path)
+    return results

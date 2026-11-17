@@ -26,7 +26,7 @@
       "U2R",
       "normal"
     ],
-    "trained_at": "2026-11-03 13:22:44",
+    "trained_at": "2026-11-17 10:37:51",
     "baseline_source": "NSL-KDD"
   },
   "validation": {
@@ -36,28 +36,28 @@
         "accuracy": 0.999,
         "detection_rate": 0.9985,
         "false_alarm_rate": 0.0006,
-        "train_seconds": 13.1
+        "train_seconds": 10.3
       },
       "hist_gradient_boosting": {
         "f1_macro": 0.9017,
         "accuracy": 0.9982,
         "detection_rate": 0.9991,
         "false_alarm_rate": 0.0024,
-        "train_seconds": 13.1
+        "train_seconds": 11.0
       },
       "logistic_regression": {
         "f1_macro": 0.7095,
         "accuracy": 0.9709,
         "detection_rate": 0.9978,
         "false_alarm_rate": 0.0518,
-        "train_seconds": 25.9
+        "train_seconds": 31.7
       },
       "mlp": {
         "f1_macro": 0.9586,
         "accuracy": 0.9979,
         "detection_rate": 0.9974,
         "false_alarm_rate": 0.0015,
-        "train_seconds": 6.0
+        "train_seconds": 8.3
       }
     },
     "detector_comparison": {
@@ -66,14 +66,14 @@
         "detection_rate": 0.8023,
         "false_alarm_rate": 0.01,
         "threshold": 0.552037,
-        "train_seconds": 0.8
+        "train_seconds": 1.4
       },
       "autoencoder": {
         "roc_auc": 0.991,
         "detection_rate": 0.887,
         "false_alarm_rate": 0.01,
         "threshold": 0.142797,
-        "train_seconds": 13.8
+        "train_seconds": 13.0
       }
     }
   },

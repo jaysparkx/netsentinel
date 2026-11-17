@@ -1,5 +1,3 @@
-"""اختبارات تحويل الحزم إلى اتصالات وميزات (بدون scapy وبدون شبكة)."""
-
 from netsentinel.data.schema import FEATURE_PROFILES
 from netsentinel.live.flow import PacketInfo, assemble_connections, connections_to_features, port_to_service
 
@@ -61,28 +59,25 @@ def test_idle_timeout_splits_connections():
 
 
 def test_payload_length_survives_snaplen_truncation():
-    """tcpdump -s 128 يقطع الحزمة؛ يجب أن نقرأ الطول الحقيقي من ترويسة IP لا من البايتات الملتقَطة."""
+    """tcpdump -s 128 cuts the packet, the size must come from the IP header."""
     from scapy.all import IP, TCP, Raw, raw
     from netsentinel.live.capture import to_packet_info
 
     full = IP(src=C, dst=S) / TCP(sport=40000, dport=80, flags="PA") / Raw(b"x" * 1000)
-    truncated = IP(raw(full)[:128])                    # ما يراه tcpdump مع snaplen=128
+    truncated = IP(raw(full)[:128])
     truncated.time = 0.0
     assert to_packet_info(truncated).payload_len == 1000
 
 
 def test_header_only_decoding_can_be_enabled_repeatedly():
-    """كل التقاط حي يستدعي _require_scapy؛ التفعيل الثاني كان يُسقط الالتقاط (Already filtered)."""
+    """_require_scapy is called for every capture, calling it twice used to fail."""
     from netsentinel.live.capture import _require_scapy
     for _ in range(3):
         _require_scapy()
 
 
 def test_live_capture_loses_no_packets_during_a_burst(monkeypatch):
-    """
-    مسح nmap = آلاف الحزم في ثانية. الالتقاط يجب أن يستمر أثناء التحليل
-    (النسخة الأولى كانت تتوقّف عن الاستماع أثناء التحليل فضاع أغلب المسح).
-    """
+    """A burst of 2000 SYN packets (like nmap) must all be reported."""
     import threading
     import time as _time
 
@@ -91,7 +86,7 @@ def test_live_capture_loses_no_packets_during_a_burst(monkeypatch):
     import netsentinel.live.capture as capture
 
     class FakeSniffer:
-        """يحاكي AsyncSniffer: يرسل 2000 حزمة SYN دفعة واحدة إلى prn."""
+        """Fake AsyncSniffer that sends 2000 SYN packets."""
         def __init__(self, prn, **_):
             self.prn = prn
 
@@ -100,7 +95,7 @@ def test_live_capture_loses_no_packets_during_a_burst(monkeypatch):
                        for port in range(1, 2001)]
 
             def burst():
-                for pkt in packets:          # دفعة واحدة سريعة، كما يفعل nmap
+                for pkt in packets:
                     pkt.time = _time.time()
                     self.prn(pkt)
                 burst_done.set()
@@ -117,7 +112,7 @@ def test_live_capture_loses_no_packets_during_a_burst(monkeypatch):
     seen = []
     stop_after = []
 
-    def should_stop() -> bool:   # نتوقّف بعد انتهاء الدفعة بدفعتَي تحليل كاملتين
+    def should_stop() -> bool:
         if burst_done.is_set() and not stop_after:
             stop_after.append(_time.time() + 1.2)
         return bool(stop_after) and _time.time() > stop_after[0]
@@ -128,10 +123,7 @@ def test_live_capture_loses_no_packets_during_a_burst(monkeypatch):
 
 
 def test_bpf_reads_use_the_enlarged_kernel_buffer(monkeypatch):
-    """
-    macOS يرفض قراءة BPF أصغر من حجم المخزن. sniff() يطلب 65535 دائماً، فبعد تكبير
-    المخزن يجب أن نقرأه كاملاً — وإلا يتوقّف الالتقاط بصمت.
-    """
+    """After enlarging the BPF buffer, reads must use the full buffer size."""
     import pytest
     bpf = pytest.importorskip("scapy.arch.bpf.supersocket")
     from netsentinel.live.capture import _require_scapy
@@ -141,5 +133,5 @@ def test_bpf_reads_use_the_enlarged_kernel_buffer(monkeypatch):
     monkeypatch.setattr(bpf.os, "read", lambda fd, n: requested.append(n) or b"")
     sock = object.__new__(bpf.L2bpfListenSocket)
     sock.bpf_fd, sock.received_frames = -1, []
-    bpf.L2bpfListenSocket.recv(sock)              # كما يستدعيها sniff()
+    bpf.L2bpfListenSocket.recv(sock)
     assert requested == [bpf.BPF_BUFFER_LENGTH] and bpf.BPF_BUFFER_LENGTH > 65535
