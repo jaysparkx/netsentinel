@@ -40,7 +40,7 @@
 netsentinel/
 +-- configs/default.yaml          <- كل الإعدادات (لا أرقام سحرية داخل الكود)
 +-- src/netsentinel/
-|   +-- config.py                 <- قراءة YAML إلى dataclasses
+|   +-- config.py                 <- قراءة الإعدادات من YAML
 |   +-- data/
 |   |   +-- schema.py             <- أسماء الأعمدة، فئات الهجمات، أوصاف عربية
 |   |   +-- loader.py             <- تنزيل وتحميل NSL-KDD، تحديد الهجمات الجديدة
@@ -84,7 +84,7 @@ netsentinel/
 
 1. المهاجم يرسل 3000 حزمة `SYN` لمنفذ 80 ولا يكمل المصافحة.
 2. `capture.py` يحوّل كل حزمة إلى `PacketInfo(protocol="tcp", tcp_flags="S", ...)`.
-3. `flow.py إلى assemble_connections` يجمعها في ~3000 اتصال، كلٌّ بحالة `flag = "S0"` (SYN بلا رد).
+3. `assemble_connections` في `flow.py` يجمعها في ~3000 اتصال، كلٌّ بحالة `flag = "S0"` (SYN بلا رد).
 4. `connections_to_features` يحسب لآخر اتصال: `count = 511`، `serror_rate = 1.0`، `dst_host_serror_rate = 1.0`.
 5. `preprocessing` يحوّلها لأرقام مطبَّعة.
 6. المصنِّف: DoS بثقة عالية. كاشف الشذوذ: درجة أعلى بكثير من العتبة.
