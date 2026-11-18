@@ -35,6 +35,16 @@ SAMPLES = {
 }
 
 app = FastAPI(title="NetSentinel")
+
+
+@app.middleware("http")
+async def no_cache(request, call_next):
+    # the page and its files change between versions, so the browser must not keep old copies
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 CFG.paths.reports_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/reports", StaticFiles(directory=CFG.paths.reports_dir), name="reports")
