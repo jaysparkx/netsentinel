@@ -5,6 +5,9 @@ import asyncio
 import json
 import os
 import queue
+import socket
+import subprocess
+import time
 import tempfile
 import threading
 from pathlib import Path
@@ -64,6 +67,52 @@ def get_model(path):
     if path not in models:
         models[path] = HybridIDS.load(Path(path))
     return models[path]
+
+
+def default_interface():
+    # the interface that carries internet traffic (Wi-Fi or ethernet)
+    try:
+        out = subprocess.run(["route", "-n", "get", "default"], capture_output=True, text=True, timeout=2).stdout
+        for line in out.splitlines():
+            if "interface:" in line:
+                return line.split(":", 1)[1].strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def loopback_interface():
+    names = [name for _, name in socket.if_nameindex()]
+    return "lo0" if "lo0" in names else "lo"
+
+
+def baseline_path(iface):
+    return CUSTOM_MODEL.with_name(f"hybrid_ids_custom_{iface}.joblib")
+
+
+def live_model(iface):
+    # a baseline learned on this interface if we have one; the old loopback baseline for lo0
+    path = baseline_path(iface)
+    if not path.exists() and iface == loopback_interface() and CUSTOM_MODEL.exists():
+        path = CUSTOM_MODEL
+    if path.exists():
+        return get_model(path), True
+    return get_model(model_path(CFG, "live")), False
+
+
+def capture_filter(iface):
+    # on a real network skip multicast / broadcast chatter (printers, mDNS), it is not traffic to or from us
+    return "ip" if iface == loopback_interface() else "ip and not multicast and not broadcast"
+
+
+def interfaces():
+    out = []
+    main = default_interface()
+    if main:
+        out.append({"name": main, "label": f"Network ({main})", "baseline": live_model(main)[1]})
+    lo = loopback_interface()
+    out.append({"name": lo, "label": f"This computer only ({lo}), for the attack range", "baseline": live_model(lo)[1]})
+    return out
 
 
 def pcap_model(custom):
@@ -202,6 +251,7 @@ def status():
         "runs": [r for r in RUNS if (CFG.paths.reports_dir / r / "metrics.json").exists()],
         "samples": [k for k, p in SAMPLES.items() if p.exists()],
         "custom_baseline": CUSTOM_MODEL.exists(),
+        "interfaces": interfaces(),
     }
 
 
@@ -253,7 +303,7 @@ def sse(event, data):
 async def live(request: Request, iface: str = "lo0"):
     if not is_root():
         raise HTTPException(403, "live capture needs root: sudo .venv/bin/netsentinel web")
-    model = pcap_model(True)
+    model, learned = live_model(iface)
     batches = queue.Queue()
     stop = threading.Event()
 
@@ -262,10 +312,10 @@ async def live(request: Request, iface: str = "lo0"):
 
     threading.Thread(target=live_capture, daemon=True,
                      kwargs={"on_batch": on_batch, "interface": iface, "batch_seconds": 3.0,
-                             "should_stop": stop.is_set}).start()
+                             "bpf_filter": capture_filter(iface), "should_stop": stop.is_set}).start()
 
     async def stream():
-        yield sse("start", {"source": iface, "threshold": model.detector.threshold_})
+        yield sse("start", {"source": iface, "threshold": model.detector.threshold_, "baseline": learned})
         try:
             while not await request.is_disconnected():
                 try:
@@ -345,6 +395,48 @@ async def range_console(request: Request):
 NORMAL_CONNECTION = dict(protocol_type="tcp", service="http", flag="SF", src_bytes=250, dst_bytes=2000,
                          count=5, srv_count=5, same_srv_rate=1.0, dst_host_count=50, dst_host_srv_count=50,
                          dst_host_same_srv_rate=1.0, logged_in=1)
+
+
+@app.get("/api/learn")
+async def learn(request: Request, iface: str, seconds: int = 120):
+    # record normal traffic on one interface, then retrain the autoencoder on it
+    local_only(request)
+    if not is_root():
+        raise HTTPException(403, "learning needs root: sudo .venv/bin/netsentinel web")
+    seconds = min(max(seconds, 30), 600)
+    batches = queue.Queue()
+    stop = threading.Event()
+    threading.Thread(target=live_capture, daemon=True,
+                     kwargs={"on_batch": batches.put, "interface": iface, "batch_seconds": 5.0,
+                             "bpf_filter": capture_filter(iface), "should_stop": stop.is_set}).start()
+
+    async def stream():
+        frames = []
+        end = time.time() + seconds
+        try:
+            while time.time() < end:
+                if await request.is_disconnected():
+                    return
+                try:
+                    frames.append(await asyncio.to_thread(batches.get, True, 1.0))
+                except queue.Empty:
+                    pass
+                yield sse("progress", {"left": max(0, round(end - time.time())),
+                                       "connections": sum(len(f) for f in frames)})
+        finally:
+            stop.set()
+        data = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        if len(data) < 200:
+            yield sse("failed", {"message": f"only {len(data)} connections, use the network more and try again (200+ needed)"})
+            return
+        model = HybridIDS.load(model_path(CFG, "live"))
+        await asyncio.to_thread(model.refit_baseline, data, CFG.anomaly.threshold_percentile)
+        path = baseline_path(iface)
+        model.save(path)
+        models.pop(str(path), None)
+        yield sse("done", {"connections": len(data), "threshold": model.detector.threshold_})
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 @app.post("/api/lab")

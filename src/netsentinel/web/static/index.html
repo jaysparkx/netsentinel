@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NetSentinel</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230b0d0f'/%3E%3Cpath d='M2 12h2V7h2v5h2V4h2v8h2V9h2v3' stroke='%234fb3e8' fill='none' stroke-width='1.5'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/style.css?v=4">
+  <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body data-level="idle">
   <header class="topbar">
@@ -42,13 +42,22 @@
               <option value="2">2x</option><option value="4" selected>4x</option><option value="10">10x</option>
             </select>
           </span>
-          <span id="live-opts" hidden>
-            <select id="iface" aria-label="interface"><option>lo0</option><option>en0</option></select>
+          <span id="live-opts" class="controls" hidden>
+            <select id="iface" aria-label="interface"></select>
           </span>
           <button class="btn" type="button" id="monitor-btn">Start</button>
         </div>
       </div>
       <p class="note" id="root-note" hidden></p>
+      <div class="learn" id="learn-box" hidden>
+        <span id="learn-text"></span>
+        <span class="controls">
+          <select id="learn-seconds" aria-label="how long">
+            <option value="60">1 min</option><option value="120" selected>2 min</option><option value="300">5 min</option>
+          </select>
+          <button class="btn ghost" type="button" id="learn-btn">Learn normal traffic</button>
+        </span>
+      </div>
 
       <div class="grid" style="margin-top:14px">
         <div class="panel c3">
@@ -240,6 +249,6 @@
 
   <footer>NSL-KDD and CIC-IDS2017 for training and testing, plus captures recorded on this laptop. Runs offline.</footer>
   <div class="tip" id="tip" hidden></div>
-  <script src="/static/main.js?v=4"></script>
+  <script src="/static/main.js?v=5"></script>
 </body>
 </html>

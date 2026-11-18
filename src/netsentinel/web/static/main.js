@@ -74,7 +74,7 @@ function stackedBars(el, bins, slots, height = 180) {
   const w = el.clientWidth || 600, h = height, left = 42, bottom = 18;
   const count = slots || bins.length || 1;
   const totals = bins.map(b => KINDS.reduce((s, k) => s + (b[k] || 0), 0));
-  const max = niceMax(Math.max(1, ...totals));
+  const max = niceMax(Math.max(4, ...totals));
   const plotW = w - left, plotH = h - bottom - 6;
   const bw = plotW / count;
   let out = svgOpen(w, h);
@@ -126,7 +126,7 @@ function scoreHistogram(el, scores, threshold) {
     bins[Math.min(nb - 1, Math.max(0, Math.floor(t * nb)))][k] += 1;
   }
   const totals = bins.map(b => KINDS.reduce((a, k) => a + b[k], 0));
-  const max = niceMax(Math.max(1, ...totals));
+  const max = niceMax(Math.max(4, ...totals));
   const plotW = w - left, plotH = h - bottom - 6, bw = plotW / nb;
   const xOf = logv => left + (logv - lo) / (hi - lo) * plotW;
   let out = svgOpen(w, h);
@@ -579,6 +579,7 @@ function startMonitor() {
     const s = JSON.parse(e.data);
     threshold = s.threshold;
     $("sensor").textContent = (mode === "live" ? "live on " : "replaying ") + s.source;
+    if (mode === "live" && s.baseline === false) $("sensor").textContent += " (no baseline)";
     if (mode === "live") print("[monitor] watching " + s.source, "info");
   });
   source.addEventListener("batch", function (e) {
@@ -615,8 +616,70 @@ for (const b of document.querySelectorAll("#mode button")) {
     for (const x of document.querySelectorAll("#mode button")) x.setAttribute("aria-pressed", x === b);
     $("replay-opts").hidden = mode !== "replay";
     $("live-opts").hidden = mode !== "live";
+    updateLearnBox();
   };
 }
+
+// learning what normal looks like on an interface
+
+let ifaces = [], learning = null;
+
+function updateLearnBox() {
+  const box = $("learn-box");
+  const info = ifaces.find(i => i.name === $("iface").value);
+  box.hidden = mode !== "live" || !info;
+  if (!info || learning) return;
+  box.classList.toggle("warn", !info.baseline);
+  $("learn-text").innerHTML = info.baseline
+    ? `The autoencoder has learned what normal traffic looks like on <b>${esc(info.name)}</b>.`
+    : `The autoencoder has not learned <b>${esc(info.name)}</b> yet, so ordinary traffic will raise false alarms. `
+      + `Use the network normally (browse, stream) while it learns.`;
+  $("learn-btn").textContent = info.baseline ? "Learn again" : "Learn normal traffic";
+}
+
+$("iface").onchange = updateLearnBox;
+
+$("learn-btn").onclick = function () {
+  if (learning) {
+    learning.close();
+    learning = null;
+    $("learn-btn").textContent = "Learn normal traffic";
+    updateLearnBox();
+    return;
+  }
+  if (source) stopMonitor();
+  const iface = $("iface").value;
+  learning = new EventSource(`/api/learn?iface=${encodeURIComponent(iface)}&seconds=${$("learn-seconds").value}`);
+  $("learn-btn").textContent = "Cancel";
+  $("learn-text").textContent = "Recording normal traffic...";
+  learning.addEventListener("progress", function (e) {
+    const p = JSON.parse(e.data);
+    $("learn-text").innerHTML = `Recording normal traffic on <b>${esc(iface)}</b>: ${n(p.connections)} connections, ${p.left}s left. Keep using the network normally.`;
+    if (p.left === 0) $("learn-text").innerHTML = `Training the autoencoder on ${n(p.connections)} connections...`;
+  });
+  learning.addEventListener("done", function (e) {
+    const d = JSON.parse(e.data);
+    learning.close();
+    learning = null;
+    const info = ifaces.find(i => i.name === iface);
+    if (info) info.baseline = true;
+    updateLearnBox();
+    $("learn-text").innerHTML = `Learned <b>${esc(iface)}</b> from ${n(d.connections)} connections. New threshold ${d.threshold.toPrecision(3)}. Press Start.`;
+  });
+  learning.addEventListener("failed", function (e) {
+    learning.close();
+    learning = null;
+    updateLearnBox();
+    $("learn-text").textContent = JSON.parse(e.data).message;
+  });
+  learning.onerror = function () {
+    if (learning && learning.readyState === EventSource.CLOSED) {
+      learning = null;
+      updateLearnBox();
+    }
+  };
+};
+
 
 // attack range
 
@@ -737,6 +800,12 @@ async function start() {
     b.onclick = () => analyzeSample(s);
     $("samples").appendChild(b);
   }
+
+  for (const i of st.interfaces || []) {
+    $("iface").innerHTML += `<option value="${esc(i.name)}">${esc(i.label)}</option>`;
+  }
+  ifaces = st.interfaces || [];
+  updateLearnBox();
 
   if (!st.root) {
     $("root-note").hidden = false;
