@@ -514,6 +514,11 @@ function drawMonitor() {
 }
 
 function onBatch(b) {
+  // older servers send fewer fields; never let one bad batch stop the screen
+  b.scores = b.scores || [];
+  b.pairs = b.pairs || [];
+  b.ports = b.ports || [];
+  b.alerts = b.alerts || [];
   const time = new Date().toTimeString().slice(0, 8);
   const bin = {normal: 0, probe: 0, attack: 0, unknown: 0, conns: b.connections, alerts: 0, label: time};
   for (const [label, count] of Object.entries(b.counts)) {
@@ -576,7 +581,13 @@ function startMonitor() {
     $("sensor").textContent = (mode === "live" ? "live on " : "replaying ") + s.source;
     if (mode === "live") print("[monitor] watching " + s.source, "info");
   });
-  source.addEventListener("batch", e => onBatch(JSON.parse(e.data)));
+  source.addEventListener("batch", function (e) {
+    try {
+      onBatch(JSON.parse(e.data));
+    } catch (err) {
+      console.error(err);
+    }
+  });
   source.addEventListener("end", function () {
     stopMonitor();
     $("sensor").textContent = "replay finished";
