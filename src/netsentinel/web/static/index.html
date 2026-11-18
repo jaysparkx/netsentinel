@@ -4,206 +4,242 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NetSentinel</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Cpath d='M2 12h2V7h2v5h2V4h2v8h2V9h2v3' stroke='%235fd4ff' fill='none' stroke-width='1.5'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/style.css?v=3">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230b0d0f'/%3E%3Cpath d='M2 12h2V7h2v5h2V4h2v8h2V9h2v3' stroke='%234fb3e8' fill='none' stroke-width='1.5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css?v=4">
 </head>
-<body>
-  <div class="banner" id="banner">
-    <span>NETWORK DEFENSE CONSOLE</span>
-    <span id="threat-strip">THREAT LEVEL: <b id="threat-word">LOW</b></span>
-    <span id="clock">--:--:-- UTC</span>
-  </div>
+<body data-level="idle">
   <header class="topbar">
-    <a class="wordmark" href="#ops">netsentinel</a>
+    <a class="wordmark" href="#monitor">NetSentinel</a>
     <nav>
-      <a href="#ops">Operations</a>
-      <a href="#analyze">Analysis</a>
+      <a href="#monitor">Monitor</a>
+      <a href="#analysis">Analysis</a>
       <a href="#results">Results</a>
       <a href="#lab">Lab</a>
     </nav>
-    <p class="status" id="status">Connecting...</p>
+    <div class="sensor">
+      <span id="sensor">sensor idle</span>
+      <span class="level" id="level">idle</span>
+    </div>
   </header>
 
   <main>
-    <!-- ============================================================ OPERATIONS -->
-    <section id="ops" class="frame ops">
-      <div class="ops-head">
+    <!-- ======================================================== MONITOR -->
+    <section id="monitor">
+      <div class="section-head">
         <div>
-          <h1>Operations</h1>
-          <p class="ar">Every connection on the wire is scored by both layers. Use live capture on a network
-            card, or replay one of our recorded captures in its real timing.</p>
+          <h1>Network monitor</h1>
+          <p class="lead">Each connection is checked by two models: a classifier that knows the attacks it was trained on,
+            and an autoencoder that only knows what normal traffic looks like.</p>
         </div>
-        <div class="source">
-          <div class="seg" role="radiogroup" id="mode">
-            <button type="button" data-mode="replay" aria-pressed="true">Replay</button>
-            <button type="button" data-mode="live" aria-pressed="false">Live capture</button>
+        <div class="controls">
+          <div class="seg" id="mode">
+            <button type="button" data-mode="replay" aria-pressed="true">Replay a capture</button>
+            <button type="button" data-mode="live" aria-pressed="false">Live interface</button>
           </div>
-          <div class="source-row" id="replay-opts">
-            <select id="replay-sample"></select>
-            <select id="replay-speed">
+          <span id="replay-opts" class="controls">
+            <select id="replay-sample" aria-label="capture"></select>
+            <select id="replay-speed" aria-label="speed">
               <option value="2">2x</option><option value="4" selected>4x</option><option value="10">10x</option>
             </select>
+          </span>
+          <span id="live-opts" hidden>
+            <select id="iface" aria-label="interface"><option>lo0</option><option>en0</option></select>
+          </span>
+          <button class="btn" type="button" id="monitor-btn">Start</button>
+        </div>
+      </div>
+      <p class="note" id="root-note" hidden></p>
+
+      <div class="grid" style="margin-top:14px">
+        <div class="panel c3">
+          <div class="panel-h"><b>Status</b><span>last 20 batches</span></div>
+          <div class="panel-b">
+            <div class="state" id="state">Idle</div>
+            <p class="state-why" id="state-why">Start a replay or a live capture.</p>
+            <div class="chart" id="spark"></div>
+            <p class="caption">Share of connections flagged, per batch</p>
           </div>
-          <div class="source-row" id="live-opts" hidden>
-            <select id="iface"><option>lo0</option><option>en0</option></select>
+        </div>
+        <div class="panel c9">
+          <div class="counters">
+            <div class="counter"><div class="v" id="c-total">0</div><div class="l">connections</div></div>
+            <div class="counter"><div class="v" id="c-rate">0</div><div class="l">per batch (avg of last 3)</div></div>
+            <div class="counter attack"><div class="v" id="c-alerts">0</div><div class="l">flagged</div></div>
+            <div class="counter probe"><div class="v" id="c-probe">0</div><div class="l">scan / probe</div></div>
+            <div class="counter unknown"><div class="v" id="c-unknown">0</div><div class="l">unknown anomaly</div></div>
           </div>
-          <button class="btn" type="button" id="monitor-btn">Start scan</button>
         </div>
-      </div>
-      <p class="root-note" id="root-note" hidden></p>
 
-      <div class="wall">
-        <div class="panel threat" id="threat-panel">
-          <div class="panel-h"><span>MON-01</span>Threat level</div>
-          <div class="threat-word" id="threat-big">LOW</div>
-          <div class="threat-bar"><i></i><i></i><i></i><i></i><i></i></div>
-          <p class="verdict-meta" id="threat-why">No scan running.</p>
-        </div>
-        <div class="panel counters">
-          <div class="panel-h"><span>MON-02</span>Sensor counters <em id="source-name"></em></div>
-          <div class="tape-stats">
-            <div class="stat"><span class="stat-n" id="c-total">0</span><span class="stat-l">connections</span></div>
-            <div class="stat"><span class="stat-n" id="c-rate">0</span><span class="stat-l">conn / s</span></div>
-            <div class="stat"><span class="stat-n alert-n" id="c-alerts">0</span><span class="stat-l">alerts</span></div>
-            <div class="stat probe"><span class="stat-n" id="c-probe">0</span><span class="stat-l">scan / probe</span></div>
-            <div class="stat unknown"><span class="stat-n" id="c-unknown">0</span><span class="stat-l">unknown anomaly</span></div>
+        <div class="panel c8">
+          <div class="panel-h"><b>Connections per batch</b><span>last 60 batches</span></div>
+          <div class="panel-b">
+            <div class="chart" id="traffic"></div>
+            <ul class="legend">
+              <li><i class="sw normal"></i>normal</li><li><i class="sw probe"></i>scan / probe</li>
+              <li><i class="sw attack"></i>known attack</li><li><i class="sw unknown"></i>unknown anomaly</li>
+            </ul>
           </div>
-          <ul class="legend">
-            <li><i class="sw normal"></i>normal</li>
-            <li><i class="sw probe"></i>scan / probe</li>
-            <li><i class="sw attack"></i>known attack</li>
-            <li><i class="sw unknown"></i>unknown anomaly</li>
-            <li><i class="sw threshold"></i>anomaly threshold</li>
-          </ul>
+        </div>
+        <div class="panel c4">
+          <div class="panel-h"><b>Which model caught it</b><span>since start</span></div>
+          <div class="panel-b" id="layers"></div>
         </div>
 
-        <div class="panel span-2">
-          <div class="panel-h"><span>MON-03</span>Traffic by verdict, per batch</div>
-          <canvas id="traffic-canvas" height="190"></canvas>
-        </div>
-        <div class="panel span-2">
-          <div class="panel-h"><span>MON-04</span>Anomaly score of each connection (log scale)</div>
-          <canvas id="score-canvas" height="190"></canvas>
-        </div>
-
-        <div class="panel span-2">
-          <div class="panel-h"><span>MON-05</span>Hosts under watch</div>
-          <div class="scroll"><table id="hosts"><tr><th>host</th><th class="num">connections</th><th class="num">alerts</th><th>status</th></tr></table></div>
-        </div>
-        <div class="panel span-2">
-          <div class="panel-h"><span>MON-06</span>Incident log</div>
-          <ol class="feed log" id="live-feed"></ol>
-        </div>
-      </div>
-
-      <h2 class="sub">Attack range</h2>
-      <p class="ar sub-note">Real attacks (nmap, HTTP flood) aimed at this machine only. Start a live scan on lo0 to see them detected.</p>
-      <div class="switches">
-        <button class="switch" type="button" role="switch" aria-checked="false" id="browse">
-          <i></i><span><b>Normal browsing</b><small>background requests to the victim server</small></span>
-        </button>
-        <button class="switch danger" type="button" role="switch" aria-checked="false" id="auto">
-          <i></i><span><b>Attack mode</b><small>runs the attacks one after another</small></span>
-        </button>
-        <div class="switch static"><span><b>Target</b><small>127.0.0.1:8088 victim web server</small></span></div>
-      </div>
-      <div class="duel-term range-term">
-        <div class="term" id="terminal"></div>
-        <div class="quick">
-          <button class="btn ghost cmd" type="button" data-cmd="scan">scan</button>
-          <button class="btn ghost cmd" type="button" data-cmd="service-scan">service-scan</button>
-          <button class="btn ghost cmd" type="button" data-cmd="flood">flood</button>
-          <button class="btn ghost cmd" type="button" data-cmd="help">help</button>
-        </div>
-        <form class="term-input" id="cmd-form">
-          <label for="cmd">attacker$</label>
-          <input id="cmd" autocomplete="off" placeholder="type help">
-        </form>
-      </div>
-    </section>
-
-    <!-- ============================================================ ANALYSIS -->
-    <section id="analyze" class="frame">
-      <div class="section-head">
-        <h2>Analysis</h2>
-        <p class="ar">Full forensic pass over a capture file: pick a recorded capture or upload a .pcap from Wireshark or tcpdump.</p>
-      </div>
-      <div class="analyze-controls">
-        <div class="samples" id="samples"></div>
-        <label class="drop">
-          <input type="file" id="upload" accept=".pcap,.pcapng">
-          <span>Choose a .pcap file</span>
-        </label>
-        <label class="toggle">
-          <input type="checkbox" id="custom" checked>
-          <span>Use the baseline trained on this laptop's normal traffic</span>
-        </label>
-      </div>
-      <div id="analyze-out" class="analyze-out"></div>
-    </section>
-
-    <!-- ============================================================ RESULTS -->
-    <section id="results" class="frame">
-      <div class="section-head">
-        <h2>Results</h2>
-        <p class="ar">Model evaluation. Every number is from test data the model did not see during training.</p>
-      </div>
-      <div class="tabs" role="tablist" id="run-tabs"></div>
-      <div class="form-row" style="margin-top:14px">
-        <label for="split">Test set</label>
-        <select id="split"></select>
-        <span class="verdict-meta" id="run-meta"></span>
-      </div>
-      <div class="kpis" id="kpis"></div>
-      <div class="grid-2">
-        <figure class="panel">
-          <div class="panel-h"><span>EVAL-01</span>Detection by mode</div>
-          <div class="pad" id="table-modes"></div>
-        </figure>
-        <figure class="panel">
-          <div class="panel-h"><span>EVAL-02</span>Detection per attack family</div>
-          <div class="pad" id="table-cats"></div>
-        </figure>
-      </div>
-      <div class="figs" id="figs"></div>
-    </section>
-
-    <!-- ============================================================ LAB -->
-    <section id="lab" class="frame">
-      <div class="section-head">
-        <h2>Test a connection</h2>
-        <p class="ar">Change a few values of one connection and see what the full NSL-KDD model decides.</p>
-      </div>
-      <div class="lab">
-        <div class="lab-inputs">
-          <div class="presets">
-            <button class="btn ghost preset" type="button" data-preset="normal">normal web</button>
-            <button class="btn ghost preset" type="button" data-preset="synflood">SYN flood</button>
-            <button class="btn ghost preset" type="button" data-preset="scan">port scan</button>
+        <div class="panel c6">
+          <div class="panel-h"><b>Autoencoder score</b><span>last 3,000 connections</span></div>
+          <div class="panel-b">
+            <div class="chart" id="scores"></div>
+            <p class="caption">Reconstruction error, log scale. Right of the line means the autoencoder finds the connection unusual.</p>
           </div>
-          <form id="lab-form" class="lab-form">
-            <div class="control"><label>flag</label><select name="flag">
-              <option>SF</option><option>S0</option><option>REJ</option><option>RSTO</option>
-              <option>RSTR</option><option>SH</option><option>S1</option><option>OTH</option></select></div>
-            <div class="control"><label>service</label><input name="service" value="http"></div>
-            <div class="control"><label>src_bytes</label><input name="src_bytes" type="number" value="250"></div>
-            <div class="control"><label>count</label><input name="count" type="number" value="5"></div>
-            <div class="control"><label>serror_rate</label><input name="serror_rate" type="number" step="0.01" value="0"></div>
-            <div class="control"><label>rerror_rate</label><input name="rerror_rate" type="number" step="0.01" value="0"></div>
-            <div class="control"><label>dst_host_count</label><input name="dst_host_count" type="number" value="50"></div>
-            <div class="control"><label>dst_host_serror_rate</label><input name="dst_host_serror_rate" type="number" step="0.01" value="0"></div>
-            <button class="btn" type="submit">Check</button>
+        </div>
+        <div class="panel c6">
+          <div class="panel-h"><b>Destination ports touched</b><span>since start, 0 to 65535</span></div>
+          <div class="panel-b">
+            <div class="chart" id="ports"></div>
+            <p class="caption" id="ports-note">A port scan shows up as a wide band; normal traffic as a few thin lines.</p>
+          </div>
+        </div>
+
+        <div class="panel c7">
+          <div class="panel-h"><b>Conversations</b><span>source to target</span></div>
+          <div class="panel-b flush scroll"><table id="pairs"></table></div>
+        </div>
+        <div class="panel c5">
+          <div class="panel-h"><b>Incidents</b><span>newest first</span></div>
+          <div class="panel-b flush"><ol class="log" id="log"></ol></div>
+        </div>
+      </div>
+
+      <h3>Attack range</h3>
+      <p class="lead">Real attacks against a small web server on this machine (127.0.0.1:8088). Run a live capture on lo0 to watch them get detected.</p>
+      <div class="range">
+        <div class="panel"><div class="panel-b">
+          <div class="toggle-row"><div>Normal browsing<small>a fake user loads pages</small></div>
+            <button class="switch" type="button" role="switch" aria-checked="false" id="browse" aria-label="normal browsing"></button></div>
+          <div class="toggle-row"><div>Attack mode<small>runs the attacks one after another</small></div>
+            <button class="switch danger" type="button" role="switch" aria-checked="false" id="auto" aria-label="attack mode"></button></div>
+          <div class="toggle-row" style="border:0"><div>Target<small class="mono">127.0.0.1:8088</small></div></div>
+        </div></div>
+        <div class="panel" style="overflow:hidden">
+          <div class="term" id="terminal"></div>
+          <div class="quick">
+            <button class="btn ghost cmd" type="button" data-cmd="scan">scan</button>
+            <button class="btn ghost cmd" type="button" data-cmd="service-scan">service-scan</button>
+            <button class="btn ghost cmd" type="button" data-cmd="flood">flood</button>
+            <button class="btn ghost cmd" type="button" data-cmd="status">status</button>
+            <button class="btn ghost cmd" type="button" data-cmd="help">help</button>
+          </div>
+          <form class="term-input" id="cmd-form">
+            <label for="cmd">attacker$</label>
+            <input id="cmd" autocomplete="off" placeholder="type help">
           </form>
         </div>
-        <div class="lab-verdict" id="lab-body"></div>
+      </div>
+    </section>
+
+    <!-- ======================================================== ANALYSIS -->
+    <section id="analysis">
+      <div class="section-head">
+        <div>
+          <h2>Analyze a capture file</h2>
+          <p class="lead">Runs the whole file at once and groups the alerts into incidents.</p>
+        </div>
+        <div class="controls">
+          <div class="samples" id="samples"></div>
+          <label class="btn ghost file">Upload .pcap<input type="file" id="upload" accept=".pcap,.pcapng"></label>
+          <label><input type="checkbox" id="custom" checked> use this laptop's baseline</label>
+        </div>
+      </div>
+      <div id="analysis-out"><p class="empty" style="padding-left:0">Pick a capture.</p></div>
+    </section>
+
+    <!-- ======================================================== RESULTS -->
+    <section id="results">
+      <div class="section-head">
+        <div>
+          <h2>Evaluation results</h2>
+          <p class="lead">Measured on test data the models never saw during training.</p>
+        </div>
+        <div class="controls">
+          <label for="split">test set</label>
+          <select id="split"></select>
+        </div>
+      </div>
+      <div class="tabs" id="run-tabs"></div>
+      <p class="note" id="run-meta" style="margin:0"></p>
+      <div class="kpis" id="kpis"></div>
+      <div class="grid">
+        <div class="panel c7">
+          <div class="panel-h"><b>Detection rate per attack family</b><span>classifier alone vs hybrid</span></div>
+          <div class="panel-b"><div class="chart" id="r-cats"></div>
+            <ul class="legend"><li><i class="sw normal"></i>classifier alone</li><li><i class="sw unknown"></i>hybrid</li></ul></div>
+        </div>
+        <div class="panel c5">
+          <div class="panel-h"><b>Confusion matrix</b>
+            <span class="seg" id="cm-mode">
+              <button type="button" data-mode="classifier_only" aria-pressed="false">classifier</button>
+              <button type="button" data-mode="anomaly_only" aria-pressed="false">autoencoder</button>
+              <button type="button" data-mode="hybrid" aria-pressed="true">hybrid</button>
+            </span></div>
+          <div class="panel-b" id="r-cm"></div>
+        </div>
+        <div class="panel c7">
+          <div class="panel-h"><b>Choosing the anomaly threshold</b><span>percentile of normal training scores</span></div>
+          <div class="panel-b"><div class="chart" id="r-threshold"></div>
+            <ul class="legend"><li><i class="sw unknown line"></i>detection rate</li><li><i class="sw attack line"></i>false alarm rate</li>
+              <li><i class="sw probe line"></i>new attacks caught</li></ul></div>
+        </div>
+        <div class="panel c5">
+          <div class="panel-h"><b>Attacks never seen in training</b><span id="r-novel-n"></span></div>
+          <div class="panel-b"><div class="chart" id="r-novel"></div><p class="caption" id="r-novel-types"></p></div>
+        </div>
+        <div class="panel c6">
+          <div class="panel-h"><b>Model selection</b><span>validation set</span></div>
+          <div class="panel-b flush" id="r-models"></div>
+        </div>
+        <div class="panel c6">
+          <div class="panel-h"><b>Most important features</b><span>drop in score when shuffled</span></div>
+          <div class="panel-b"><div class="chart" id="r-features"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== LAB -->
+    <section id="lab" style="border-bottom:0">
+      <div class="section-head">
+        <div>
+          <h2>Test one connection</h2>
+          <p class="lead">Set a few values of a single connection and see what the full NSL-KDD model decides, and why.</p>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="panel c7"><div class="panel-b">
+          <form id="lab-form" class="lab-form">
+            <div class="field"><label>flag</label><select name="flag">
+              <option>SF</option><option>S0</option><option>REJ</option><option>RSTO</option>
+              <option>RSTR</option><option>SH</option><option>S1</option><option>OTH</option></select></div>
+            <div class="field"><label>service</label><input name="service" value="http"></div>
+            <div class="field"><label>src_bytes</label><input name="src_bytes" type="number" value="250"></div>
+            <div class="field"><label>count</label><input name="count" type="number" value="5"></div>
+            <div class="field"><label>serror_rate</label><input name="serror_rate" type="number" step="0.01" value="0"></div>
+            <div class="field"><label>rerror_rate</label><input name="rerror_rate" type="number" step="0.01" value="0"></div>
+            <div class="field"><label>dst_host_count</label><input name="dst_host_count" type="number" value="50"></div>
+            <div class="field"><label>dst_host_serror_rate</label><input name="dst_host_serror_rate" type="number" step="0.01" value="0"></div>
+            <div class="actions">
+              <button class="btn" type="submit">Check</button>
+              <button class="btn ghost preset" type="button" data-preset="normal">normal web</button>
+              <button class="btn ghost preset" type="button" data-preset="synflood">SYN flood</button>
+              <button class="btn ghost preset" type="button" data-preset="scan">port scan</button>
+            </div>
+          </form>
+        </div></div>
+        <div class="panel c5"><div class="panel-b" id="lab-body"><p class="empty" style="padding:0">No result yet.</p></div></div>
       </div>
     </section>
   </main>
 
-  <footer class="frame footer">
-    <p>Trained and tested on NSL-KDD and CIC-IDS2017, and on captures recorded on this machine. Runs offline.</p>
-  </footer>
-
-  <script src="/static/main.js?v=3"></script>
+  <footer>NSL-KDD and CIC-IDS2017 for training and testing, plus captures recorded on this laptop. Runs offline.</footer>
+  <div class="tip" id="tip" hidden></div>
+  <script src="/static/main.js?v=4"></script>
 </body>
 </html>

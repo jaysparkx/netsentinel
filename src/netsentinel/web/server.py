@@ -128,19 +128,6 @@ def kind(label):
     return "attack"
 
 
-def host_table(features, pred, limit=12):
-    # one row per host that received traffic: how many connections, alerts, worst verdict
-    df = pd.DataFrame({"host": features["dst_ip"], "label": pred["final_label"], "alert": pred["is_alert"]})
-    rank = {"normal": 0, "probe": 1, "unknown": 2, "attack": 3}
-    df["kind"] = df["label"].map(kind)
-    rows = []
-    for host, g in df.groupby("host"):
-        worst = max(g["kind"], key=rank.get)
-        rows.append({"ip": host, "connections": len(g), "alerts": int(g["alert"].sum()), "worst": worst})
-    rows.sort(key=lambda r: (-r["alerts"], -r["connections"]))
-    return rows[:limit]
-
-
 def timeline(features, pred, bins=60):
     # connections per time bin, split by verdict colour
     t = features["timestamp"].to_numpy()
@@ -151,6 +138,33 @@ def timeline(features, pred, bins=60):
     for i, k in zip(idx, kinds):
         out[k][i] += 1
     return {"seconds": round(float(edges[-1] - edges[0]), 1), "bins": out}
+
+
+def conversations(features, pred, limit=50):
+    # one row per source -> target pair, so a scanner shows up as one line with many ports
+    df = pd.DataFrame({"src": features["src_ip"], "dst": features["dst_ip"], "port": features["dst_port"],
+                       "kind": pred["final_label"].map(kind), "alert": pred["is_alert"]})
+    rank = {"normal": 0, "probe": 1, "unknown": 2, "attack": 3}
+    rows = []
+    for (src, dst), g in df.groupby(["src", "dst"]):
+        flagged = g.loc[g["kind"] != "normal", "kind"]
+        rows.append({"src": src, "dst": dst, "connections": len(g), "alerts": int(g["alert"].sum()),
+                     "ports": sorted(int(p) for p in g["port"].unique())[:3000],
+                     # the most common verdict among flagged connections, so a scan with a few
+                     # DoS hits still reads as a scan
+                     "main": flagged.mode().iloc[0] if len(flagged) else "normal",
+                     "worst": max(g["kind"], key=rank.get)})
+    rows.sort(key=lambda r: (-r["alerts"], -r["connections"]))
+    return rows[:limit]
+
+
+def port_kinds(features, pred):
+    # worst verdict seen on each destination port
+    rank = {"normal": 0, "probe": 1, "unknown": 2, "attack": 3}
+    df = pd.DataFrame({"port": features["dst_port"], "rank": pred["final_label"].map(kind).map(rank)})
+    names = {v: k for k, v in rank.items()}
+    worst = df.groupby("port")["rank"].max()
+    return [[int(p), names[int(r)]] for p, r in worst.items()][:5000]
 
 
 def batch_payload(model, features, pred):
@@ -166,14 +180,13 @@ def batch_payload(model, features, pred):
             "dst": f"{row.get('dst_ip')}:{row.get('dst_port')}",
             "why": ", ".join(f"{r['feature']}={r['value']}" for r in reasons),
         })
-    sample = pred.sample(min(len(pred), 150), random_state=0) if len(pred) else pred
-    points = [[round(float(s), 4), kind(l)] for s, l in zip(sample["anomaly_score"], sample["final_label"])]
     return {
         "connections": len(features),
         "counts": {k: int(v) for k, v in pred["final_label"].value_counts().items()},
         "alerts": alerts,
-        "points": points,
-        "hosts": host_table(features, pred, limit=50),
+        "scores": [[round(float(s), 5), kind(l)] for s, l in zip(pred["anomaly_score"], pred["final_label"])][:2000],
+        "pairs": conversations(features, pred),
+        "ports": port_kinds(features, pred),
     }
 
 
@@ -226,7 +239,7 @@ async def analyze(sample: str = Form(None), custom: bool = Form(True), file: Upl
         "seconds": round(float(features["timestamp"].max() - features["timestamp"].min()), 1),
         "counts": {k: int(v) for k, v in pred["final_label"].value_counts().items()},
         "incidents": incident_list(model, features, pred),
-        "hosts": host_table(features, pred),
+        "pairs": conversations(features, pred, limit=20),
         "timeline": timeline(features, pred),
         "threshold": model.detector.threshold_,
     }
