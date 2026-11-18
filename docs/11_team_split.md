@@ -140,10 +140,10 @@
 ‏خطوات العرض (يجربها قبل يوم المناقشة):
 
 1. ‏`sudo .venv/bin/netsentinel web` ثم افتح http://127.0.0.1:8000
-2. ‏Live detection: اضغط Start monitoring وفعّل browse، وانتظر حتى يرتفع عداد normal.
+2. ‏Operations: اختر Live capture و lo0 واضغط Start scan، ثم فعّل Normal browsing وانتظر حتى يرتفع عداد الاتصالات.
 3. ‏اضغط scan: يظهر `[ALERT] Probe`.
 4. ‏اضغط flood: يظهر `[ALERT] Unknown-Anomaly`. قل: "المصنف لم يتعلم هذا، الكاشف الثاني هو من كشفه."
-5. ‏Test a connection: اضغط SYN flood ثم Check وأظهر السبب.
+5. ‏Lab: اضغط SYN flood ثم Check وأظهر السبب.
 
 ‏الملفات: `live/flow.py`, `live/capture.py`, `web/attack_range.py`, `web/server.py`، و [06_live_detection.md](06_live_detection.md).
 
@@ -151,7 +151,7 @@
 
 - ‏هل يعمل مع HTTPS؟ نعم، نقرأ الترويسات وحجم الحمولة فقط، لا المحتوى.
 - ‏لماذا يحتاج root؟ قراءة الحزم من كرت الشبكة تحتاج صلاحية مدير النظام.
-- ‏ماذا لو فشل العرض الحي؟ نستخدم قسم Analyze مع الملف `real_attack` المسجل مسبقاً من نفس اللابتوب.
+- ‏ماذا لو فشل العرض الحي؟ نضغط Replay في قسم Operations مع الملف `real_attack` المسجل مسبقاً من نفس اللابتوب، فتعمل نفس الشاشات بدون sudo.
 
 ---
 

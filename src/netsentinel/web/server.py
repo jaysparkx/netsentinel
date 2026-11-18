@@ -9,6 +9,7 @@ import tempfile
 import threading
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -107,6 +108,65 @@ def incident_list(model, features, pred, limit=10):
     return out
 
 
+def kind(label):
+    if label in ("normal", "BENIGN"):
+        return "normal"
+    if label == "Unknown-Anomaly":
+        return "unknown"
+    if label in ("Probe", "PortScan"):
+        return "probe"
+    return "attack"
+
+
+def host_table(features, pred, limit=12):
+    # one row per host that received traffic: how many connections, alerts, worst verdict
+    df = pd.DataFrame({"host": features["dst_ip"], "label": pred["final_label"], "alert": pred["is_alert"]})
+    rank = {"normal": 0, "probe": 1, "unknown": 2, "attack": 3}
+    df["kind"] = df["label"].map(kind)
+    rows = []
+    for host, g in df.groupby("host"):
+        worst = max(g["kind"], key=rank.get)
+        rows.append({"ip": host, "connections": len(g), "alerts": int(g["alert"].sum()), "worst": worst})
+    rows.sort(key=lambda r: (-r["alerts"], -r["connections"]))
+    return rows[:limit]
+
+
+def timeline(features, pred, bins=60):
+    # connections per time bin, split by verdict colour
+    t = features["timestamp"].to_numpy()
+    edges = np.linspace(t.min(), t.max() + 1e-6, bins + 1)
+    idx = np.clip(np.searchsorted(edges, t, side="right") - 1, 0, bins - 1)
+    kinds = pred["final_label"].map(kind).to_numpy()
+    out = {k: [0] * bins for k in ("normal", "probe", "attack", "unknown")}
+    for i, k in zip(idx, kinds):
+        out[k][i] += 1
+    return {"seconds": round(float(edges[-1] - edges[0]), 1), "bins": out}
+
+
+def batch_payload(model, features, pred):
+    # same message for live capture and replay
+    alerts = []
+    for _, inc in group_incidents(features, pred).head(5).iterrows():
+        row = features.loc[inc["representative"]]
+        reasons = explain(model, row, top_k=2)
+        alerts.append({
+            "label": inc["final_label"],
+            "connections": int(inc["connections"]),
+            "src": row.get("src_ip"),
+            "dst": f"{row.get('dst_ip')}:{row.get('dst_port')}",
+            "why": ", ".join(f"{r['feature']}={r['value']}" for r in reasons),
+        })
+    sample = pred.sample(min(len(pred), 150), random_state=0) if len(pred) else pred
+    points = [[round(float(s), 4), kind(l)] for s, l in zip(sample["anomaly_score"], sample["final_label"])]
+    return {
+        "connections": len(features),
+        "counts": {k: int(v) for k, v in pred["final_label"].value_counts().items()},
+        "alerts": alerts,
+        "points": points,
+        "hosts": host_table(features, pred, limit=50),
+    }
+
+
 @app.get("/")
 def index():
     return FileResponse(STATIC_DIR / "index.html")
@@ -156,6 +216,9 @@ async def analyze(sample: str = Form(None), custom: bool = Form(True), file: Upl
         "seconds": round(float(features["timestamp"].max() - features["timestamp"].min()), 1),
         "counts": {k: int(v) for k, v in pred["final_label"].value_counts().items()},
         "incidents": incident_list(model, features, pred),
+        "hosts": host_table(features, pred),
+        "timeline": timeline(features, pred),
+        "threshold": model.detector.threshold_,
     }
 
 
@@ -179,7 +242,7 @@ async def live(request: Request, iface: str = "lo0"):
                              "should_stop": stop.is_set}).start()
 
     async def stream():
-        yield sse("start", {"iface": iface})
+        yield sse("start", {"source": iface, "threshold": model.detector.threshold_})
         try:
             while not await request.is_disconnected():
                 try:
@@ -187,22 +250,36 @@ async def live(request: Request, iface: str = "lo0"):
                 except queue.Empty:
                     yield ": ping\n\n"
                     continue
-                # send counts plus one line per incident in this batch
-                alerts = []
-                for _, inc in group_incidents(features, pred).head(5).iterrows():
-                    row = features.loc[inc["representative"]]
-                    reasons = explain(model, row, top_k=2)
-                    alerts.append({
-                        "label": inc["final_label"],
-                        "connections": int(inc["connections"]),
-                        "src": row.get("src_ip"),
-                        "dst": f"{row.get('dst_ip')}:{row.get('dst_port')}",
-                        "why": ", ".join(f"{r['feature']}={r['value']}" for r in reasons),
-                    })
-                counts = {k: int(v) for k, v in pred["final_label"].value_counts().items()}
-                yield sse("batch", {"connections": len(features), "counts": counts, "alerts": alerts})
+                yield sse("batch", batch_payload(model, features, pred))
         finally:
             stop.set()
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.get("/api/replay")
+async def replay(request: Request, sample: str = "real_attack", speed: float = 4.0):
+    # play a recorded capture back in its own timing, in 1 second windows,
+    # so the monitors can run without root
+    if sample not in SAMPLES or not SAMPLES[sample].exists():
+        raise HTTPException(404, f"no sample {sample}")
+    model = pcap_model(True)
+    features = await asyncio.to_thread(sample_features, SAMPLES[sample])
+    pred = await asyncio.to_thread(model.predict, features)
+    speed = min(max(speed, 0.5), 20.0)
+    window = (features["timestamp"] - features["timestamp"].min()).astype(int)
+
+    async def stream():
+        yield sse("start", {"source": sample + ".pcap", "threshold": model.detector.threshold_})
+        last = None
+        for second, idx in features.groupby(window).groups.items():
+            if await request.is_disconnected():
+                return
+            # skip long quiet gaps
+            await asyncio.sleep(min(second - last, 2) / speed if last is not None else 0)
+            last = second
+            yield sse("batch", batch_payload(model, features.loc[idx], pred.loc[idx]))
+        yield sse("end", {})
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 

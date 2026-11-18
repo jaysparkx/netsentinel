@@ -105,14 +105,86 @@ function showResults() {
                 ["threshold_sensitivity", "Threshold trade-off"]];
   if (m.novel_attacks) figs.push(["novel_detection", "Attacks never seen in training"]);
   document.getElementById("figs").innerHTML = figs.map(([f, title]) =>
-    `<figure class="cell"><figcaption class="cell-title">${title}</figcaption>
+    `<figure class="panel"><div class="panel-h"><span>FIG</span>${title}</div>
      <img src="${fig}${f}_${tag}.png" alt="${title}" onerror="this.parentNode.remove()"></figure>`).join("");
 }
 
 document.getElementById("split").onchange = showResults;
 
 
-// analyze
+// charts
+
+function setupCanvas(canvas) {
+  const ratio = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * ratio) { canvas.width = w * ratio; canvas.height = h * ratio; }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return {ctx, w, h};
+}
+
+const CSSVAR = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const KINDS = ["normal", "probe", "attack", "unknown"];
+const kindColor = k => ({normal: CSSVAR("--calm"), probe: CSSVAR("--scan"), attack: CSSVAR("--breach"), unknown: CSSVAR("--ghost")})[k];
+
+// stacked bars, one per bin: bins = [{normal, probe, attack, unknown}, ...]
+function drawStacked(canvas, bins, slots) {
+  const {ctx, w, h} = setupCanvas(canvas);
+  const n = slots || bins.length || 1;
+  // square-root scale so one burst does not flatten every other bar
+  const max = Math.sqrt(Math.max(1, ...bins.map(b => KINDS.reduce((s, k) => s + (b[k] || 0), 0))));
+  const bw = w / n;
+  ctx.strokeStyle = CSSVAR("--rule");
+  for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(0, h * i / 4); ctx.lineTo(w, h * i / 4); ctx.stroke(); }
+  bins.forEach((b, i) => {
+    let y = h;
+    const x = (n - bins.length + i) * bw;
+    const total = KINDS.reduce((s, k) => s + (b[k] || 0), 0);
+    const height = Math.sqrt(total) / max * (h - 16);
+    for (const k of KINDS) {
+      const bh = total ? (b[k] || 0) / total * height : 0;
+      ctx.fillStyle = kindColor(k);
+      ctx.fillRect(x + 1, y - bh, Math.max(bw - 2, 1), bh);
+      y -= bh;
+    }
+  });
+  ctx.fillStyle = CSSVAR("--ash");
+  ctx.font = "11px Departure, monospace";
+  ctx.fillText("max " + Math.round(max * max) + " conn (sqrt scale)", 6, 12);
+}
+
+// scatter of anomaly scores with the threshold line
+function drawScores(canvas, points, threshold) {
+  const {ctx, w, h} = setupCanvas(canvas);
+  if (!threshold) return;
+  const lo = Math.log10(threshold) - 3, hi = Math.log10(threshold) + 3;
+  const y = s => h - (Math.min(Math.max(Math.log10(Math.max(s, 1e-9)), lo), hi) - lo) / (hi - lo) * (h - 10) - 5;
+  points.forEach((p, i) => {
+    ctx.fillStyle = kindColor(p[1]);
+    ctx.fillRect(i / Math.max(points.length, 1) * w, y(p[0]) - 1.5, 3, 3);
+  });
+  ctx.strokeStyle = CSSVAR("--bone");
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(0, y(threshold)); ctx.lineTo(w, y(threshold)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = CSSVAR("--bone");
+  ctx.font = "11px Departure, monospace";
+  ctx.fillText("threshold " + threshold.toFixed(4), 6, y(threshold) - 6);
+}
+
+function hostRows(hosts) {
+  let html = `<tr><th>host</th><th class="num">connections</th><th class="num">alerts</th><th>status</th></tr>`;
+  for (const h of hosts) {
+    const word = {normal: "clear", probe: "scanned", attack: "attacked", unknown: "anomalous"}[h.worst];
+    html += `<tr><td class="mono">${esc(h.ip)}</td><td class="num">${h.connections.toLocaleString()}</td>
+      <td class="num">${h.alerts.toLocaleString()}</td><td><span class="chip ${h.worst}">${word}</span></td></tr>`;
+  }
+  return html;
+}
+
+
+// analysis
 
 function incidentHTML(inc) {
   let reasons = "";
@@ -135,18 +207,25 @@ async function analyze(formData) {
     const total = Object.values(d.counts).reduce((a, b) => a + b, 0) || 1;
     let mix = "", legend = "";
     for (const [label, count] of Object.entries(d.counts)) {
-      const color = COLORS[kind(label)];
-      mix += `<span style="width:${count / total * 100}%;background:${color}"></span>`;
+      mix += `<span style="width:${count / total * 100}%;background:${COLORS[kind(label)]}"></span>`;
       legend += `<span><i class="sw ${kind(label)}"></i>${esc(label)} ${count.toLocaleString()}</span>`;
     }
     let html = `<div class="tape-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--rule)">
       <div class="stat"><span class="stat-n">${d.connections.toLocaleString()}</span><span class="stat-l">connections</span></div>
-      <div class="stat"><span class="stat-n">${d.alerts.toLocaleString()}</span><span class="stat-l">alerts</span></div>
+      <div class="stat"><span class="stat-n alert-n">${d.alerts.toLocaleString()}</span><span class="stat-l">alerts</span></div>
       <div class="stat"><span class="stat-n">${d.seconds}s</span><span class="stat-l">of traffic</span></div></div>
       <div class="mix">${mix}</div><div class="mix-legend">${legend}</div>
-      <h3 class="cell-title">Incidents</h3><ol class="feed">`;
+      <div class="grid-2">
+        <div class="panel"><div class="panel-h"><span>AN-01</span>Timeline (${d.timeline.seconds}s, 60 slices)</div>
+          <canvas id="an-timeline" height="190"></canvas></div>
+        <div class="panel"><div class="panel-h"><span>AN-02</span>Hosts</div>
+          <div class="scroll"><table>${hostRows(d.hosts)}</table></div></div>
+      </div>
+      <div class="panel"><div class="panel-h"><span>AN-03</span>Incidents</div><ol class="feed" style="padding:0 14px">`;
     for (const inc of d.incidents) html += incidentHTML(inc);
-    out.innerHTML = html + "</ol>";
+    out.innerHTML = html + "</ol></div>";
+    const bins = d.timeline.bins.normal.map((_, i) => Object.fromEntries(KINDS.map(k => [k, d.timeline.bins[k][i]])));
+    drawStacked(document.getElementById("an-timeline"), bins);
   } catch (e) {
     out.innerHTML = `<p class="error">${esc(e.message)}</p>`;
   }
@@ -169,11 +248,19 @@ document.getElementById("upload").onchange = function (e) {
 };
 
 
-// live
+// operations
 
 const terminal = document.getElementById("terminal");
-const totals = {total: 0, normal: 0, alerts: 0, probe: 0, unknown: 0};
-let liveSource = null;
+let totals, history, scores, hosts, threshold = null, source = null, mode = "replay";
+
+function resetOps() {
+  totals = {total: 0, alerts: 0, probe: 0, unknown: 0};
+  history = [];      // last 60 batches: {normal, probe, attack, unknown, conns, alerts}
+  scores = [];       // last 1500 [score, kind]
+  hosts = {};
+  document.getElementById("live-feed").innerHTML = "";
+  updateOps();
+}
 
 function print(text, cls) {
   if (cls === "clear") {
@@ -187,62 +274,135 @@ function print(text, cls) {
   terminal.scrollTop = terminal.scrollHeight;
 }
 
-function updateCounts() {
+// threat level from the last 20 batches
+function threatLevel() {
+  const recent = history.slice(-20);
+  const conns = recent.reduce((s, b) => s + b.conns, 0);
+  const alerts = recent.reduce((s, b) => s + b.alerts, 0);
+  const attack = recent.reduce((s, b) => s + b.attack, 0);
+  const unknown = recent.reduce((s, b) => s + b.unknown, 0);
+  const probe = recent.reduce((s, b) => s + b.probe, 0);
+  const share = conns ? alerts / conns : 0;
+  if (!source && !conns) return ["low", "No scan running."];
+  if (alerts === 0) return ["low", "No alerts in the last 20 batches."];
+  if (share > 0.6 && alerts > 100) return ["severe", `${pct(share)} of recent traffic is hostile.`];
+  if (attack > 0 || unknown > 20 || share > 0.25) return ["high", `${attack} known attack and ${unknown} unknown connections recently.`];
+  if (probe > 0 || share > 0.05) return ["elevated", `${probe} scan / probe connections recently.`];
+  return ["guarded", `${alerts} alerts out of ${conns} recent connections.`];
+}
+
+function updateOps() {
   for (const key of Object.keys(totals)) {
     document.getElementById("c-" + key).textContent = totals[key].toLocaleString();
   }
+  const last = history.slice(-3);
+  const rate = last.length ? last.reduce((s, b) => s + b.conns, 0) / last.length : 0;
+  document.getElementById("c-rate").textContent = Math.round(rate).toLocaleString();
+
+  const [level, why] = threatLevel();
+  document.body.dataset.level = level;
+  document.getElementById("threat-big").textContent = level.toUpperCase();
+  document.getElementById("threat-word").textContent = level.toUpperCase();
+  document.getElementById("threat-why").textContent = why;
+
+  drawStacked(document.getElementById("traffic-canvas"), history, 60);
+  drawScores(document.getElementById("score-canvas"), scores, threshold);
+  const list = Object.values(hosts).sort((a, b) => b.alerts - a.alerts || b.connections - a.connections);
+  document.getElementById("hosts").innerHTML = hostRows(list);
+}
+
+function onBatch(b) {
+  const bin = {normal: 0, probe: 0, attack: 0, unknown: 0, conns: b.connections, alerts: 0};
+  for (const [label, count] of Object.entries(b.counts)) {
+    bin[kind(label)] += count;
+    if (label !== "normal" && label !== "BENIGN") bin.alerts += count;
+  }
+  totals.total += b.connections;
+  totals.alerts += bin.alerts;
+  totals.probe += bin.probe;
+  totals.unknown += bin.unknown;
+  history.push(bin);
+  if (history.length > 60) history.shift();
+  scores.push(...b.points);
+  if (scores.length > 1500) scores.splice(0, scores.length - 1500);
+
+  const rank = {normal: 0, probe: 1, unknown: 2, attack: 3};
+  for (const h of b.hosts) {
+    const old = hosts[h.ip] || {ip: h.ip, connections: 0, alerts: 0, worst: "normal"};
+    old.connections += h.connections;
+    old.alerts += h.alerts;
+    if (rank[h.worst] > rank[old.worst]) old.worst = h.worst;
+    hosts[h.ip] = old;
+  }
+
+  const feed = document.getElementById("live-feed");
+  const time = new Date().toISOString().slice(11, 19);
+  for (const a of b.alerts) {
+    if (mode === "live") print(`[ALERT] ${a.label} ${a.src} -> ${a.dst} (${a.connections} conn)`, "ids " + kind(a.label));
+    feed.insertAdjacentHTML("afterbegin", `<li class="incident" data-kind="${kind(a.label)}"><span class="bar"></span>
+      <div class="who"><time>${time}</time><b>${esc(a.label)}</b>${esc(a.src)} &rarr; ${esc(a.dst)}
+      <small>${a.connections} connections</small></div>
+      <div class="why" style="direction:ltr;text-align:left"><code>${esc(a.why)}</code></div></li>`);
+  }
+  while (feed.children.length > 40) feed.lastChild.remove();
+  updateOps();
+}
+
+function startScan() {
+  resetOps();
+  let url;
+  if (mode === "live") {
+    url = "/api/live?iface=" + document.getElementById("iface").value;
+  } else {
+    url = `/api/replay?sample=${document.getElementById("replay-sample").value}&speed=${document.getElementById("replay-speed").value}`;
+  }
+  source = new EventSource(url);
+  const btn = document.getElementById("monitor-btn");
+  btn.textContent = "Stop scan";
+  btn.classList.add("running");
+  source.addEventListener("start", function (e) {
+    const s = JSON.parse(e.data);
+    threshold = s.threshold;
+    document.getElementById("source-name").textContent = (mode === "live" ? "live: " : "replay: ") + s.source;
+    if (mode === "live") print("[monitor] watching " + s.source, "info");
+  });
+  source.addEventListener("batch", e => onBatch(JSON.parse(e.data)));
+  source.addEventListener("end", function () {
+    stopScan();
+    document.getElementById("source-name").textContent += " (finished)";
+  });
+  source.onerror = function () {
+    if (source && source.readyState === EventSource.CLOSED) stopScan();
+  };
+}
+
+function stopScan() {
+  if (source) source.close();
+  source = null;
+  const btn = document.getElementById("monitor-btn");
+  btn.textContent = "Start scan";
+  btn.classList.remove("running");
+  updateOps();
+}
+
+document.getElementById("monitor-btn").onclick = function () {
+  if (source) stopScan();
+  else startScan();
+};
+
+for (const b of document.querySelectorAll("#mode button")) {
+  b.onclick = function () {
+    if (source) stopScan();
+    mode = b.dataset.mode;
+    for (const x of document.querySelectorAll("#mode button")) x.setAttribute("aria-pressed", x === b);
+    document.getElementById("replay-opts").hidden = mode !== "replay";
+    document.getElementById("live-opts").hidden = mode !== "live";
+  };
 }
 
 function setSwitch(id, on) {
   document.getElementById(id).setAttribute("aria-checked", on ? "true" : "false");
 }
-
-function startMonitoring() {
-  for (const key of Object.keys(totals)) totals[key] = 0;
-  updateCounts();
-  document.getElementById("live-feed").innerHTML = "";
-  const iface = document.getElementById("iface").value;
-  liveSource = new EventSource("/api/live?iface=" + iface);
-  setSwitch("monitor-btn", true);
-  print("[monitor] watching " + iface, "info");
-
-  liveSource.addEventListener("batch", function (e) {
-    const b = JSON.parse(e.data);
-    totals.total += b.connections;
-    for (const [label, count] of Object.entries(b.counts)) {
-      if (label === "normal") totals.normal += count;
-      else totals.alerts += count;
-      if (kind(label) === "probe") totals.probe += count;
-      if (label === "Unknown-Anomaly") totals.unknown += count;
-    }
-    updateCounts();
-    const feed = document.getElementById("live-feed");
-    for (const a of b.alerts) {
-      print(`[IDS] ${a.label} ${a.src} -> ${a.dst} (${a.connections} conn) ${a.why}`, "ids " + kind(a.label));
-      feed.insertAdjacentHTML("afterbegin", `<li class="incident" data-kind="${kind(a.label)}"><span class="bar"></span>
-        <div class="who"><b>${esc(a.label)}</b>${esc(a.src)} &rarr; ${esc(a.dst)}
-        <small>${a.connections} connections</small></div>
-        <div class="why" style="direction:ltr;text-align:left"><code>${esc(a.why)}</code></div></li>`);
-    }
-    while (feed.children.length > 8) feed.lastChild.remove();
-  });
-  liveSource.onerror = function () {
-    print("[monitor] connection lost", "err");
-  };
-}
-
-function stopMonitoring() {
-  liveSource.close();
-  liveSource = null;
-  setSwitch("monitor-btn", false);
-  print("[monitor] stopped", "info");
-}
-
-document.getElementById("monitor-btn").onclick = function (e) {
-  if (e.target.tagName === "SELECT" || e.target.tagName === "OPTION") return;
-  if (liveSource) stopMonitoring();
-  else startMonitoring();
-};
 
 function sendCommand(cmd) {
   postJSON("/api/range/command", {cmd: cmd}).then(syncRange).catch(function (e) {
@@ -267,12 +427,10 @@ document.getElementById("cmd-form").onsubmit = function (e) {
 };
 
 document.getElementById("browse").onclick = function () {
-  const on = this.getAttribute("aria-checked") !== "true";
-  sendCommand("browse " + (on ? "on" : "off"));
+  sendCommand("browse " + (this.getAttribute("aria-checked") !== "true" ? "on" : "off"));
 };
 document.getElementById("auto").onclick = function () {
-  const on = this.getAttribute("aria-checked") !== "true";
-  sendCommand("auto " + (on ? "on" : "off"));
+  sendCommand("auto " + (this.getAttribute("aria-checked") !== "true" ? "on" : "off"));
 };
 
 // output from nmap / flood comes from the server as a stream of lines
@@ -283,6 +441,11 @@ console_.addEventListener("line", function (e) {
   else if (line.kind === "cmd") print("$ " + line.text, "cmd");
   else print(line.text, line.kind === "out" ? "" : line.kind);
 });
+
+setInterval(function () {
+  document.getElementById("clock").textContent = new Date().toISOString().slice(11, 19) + " UTC";
+}, 1000);
+window.addEventListener("resize", () => updateOps());
 
 
 // lab
@@ -376,12 +539,15 @@ async function start() {
   if (!status.root) {
     const note = document.getElementById("root-note");
     note.hidden = false;
-    note.innerHTML = "Monitoring needs root. Restart with <code>sudo .venv/bin/netsentinel web</code> (attack buttons work anyway).";
-    document.getElementById("monitor-btn").disabled = true;
+    note.innerHTML = "Live capture needs root: restart with <code>sudo .venv/bin/netsentinel web</code>. Replay works without it.";
+    document.querySelector('#mode button[data-mode="live"]').disabled = true;
   }
 
+  const replaySelect = document.getElementById("replay-sample");
+  for (const s of status.samples) replaySelect.innerHTML += `<option value="${esc(s)}">${esc(s)}.pcap</option>`;
   getJSON("/api/range").then(syncRange);
   if (status.runs.length) loadRun(status.runs[0]);
 }
 
+resetOps();
 start();

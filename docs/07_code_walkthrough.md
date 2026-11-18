@@ -140,6 +140,7 @@ final = np.where(clf_label != "normal", clf_label,
 - ‏`GET /api/results/{run}` نتائج تجربة من `metrics.json`.
 - ‏`POST /api/analyze` تحليل pcap (عينة أو ملف مرفوع) وإرجاع الحوادث.
 - ‏`GET /api/live` بث الالتقاط الحي (SSE، يحتاج root).
+- ‏`GET /api/replay` إعادة بث ملف pcap مسجل بتوقيته، ثانية بثانية، فتعمل شاشات المراقبة بدون root.
 - ‏`GET /api/range` و `POST /api/range/command` و `GET /api/range/console` ميدان الهجوم وطرفيته.
 - ‏`POST /api/lab` قرار النظام على اتصال واحد نكتب قيمه بأيدينا.
 
@@ -156,7 +157,7 @@ final = np.where(clf_label != "normal", clf_label,
 
 ## web/static/
 
-‏`index.html` الأقسام الأربعة (النتائج، التحليل، المراقبة الحية، المختبر)، `style.css` التصميم الداكن (لون لكل نوع قرار) و `fonts/` الخطوط محلياً حتى يعمل بدون إنترنت، `main.js` يجلب البيانات من الـ API ويعرضها.
+‏`index.html` الأقسام الأربعة (Operations غرفة المراقبة، Analysis التحليل، Results النتائج، Lab المختبر)، `style.css` التصميم الداكن (لون لكل نوع قرار) و `fonts/` الخطوط محلياً حتى يعمل بدون إنترنت، `main.js` يجلب البيانات من الـ API ويرسم الشاشات (canvas) ويحسب مستوى التهديد من آخر 20 دفعة.
 
 ## tests/
 
