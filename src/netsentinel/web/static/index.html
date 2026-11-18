@@ -1,96 +1,165 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NetSentinel</title>
-<link rel="stylesheet" href="/static/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NetSentinel</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Cpath d='M2 12h2V7h2v5h2V4h2v8h2V9h2v3' stroke='%235fd4ff' fill='none' stroke-width='1.5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <header class="topbar">
+    <a class="wordmark" href="#top">netsentinel</a>
+    <nav>
+      <a href="#results">Results</a>
+      <a href="#analyze">Analyze</a>
+      <a href="#live">Live</a>
+      <a href="#lab">Lab</a>
+    </nav>
+    <p class="status" id="status">Connecting...</p>
+  </header>
 
-<header>
-  <h1>NetSentinel</h1>
-  <p>Hybrid intrusion detection: a classifier for known attacks + an autoencoder for unusual traffic.</p>
-  <nav>
-    <a href="#results">Results</a>
-    <a href="#analyze">Analyze pcap</a>
-    <a href="#live">Live</a>
-    <a href="#lab">Test a connection</a>
-  </nav>
-  <p id="status" class="small"></p>
-</header>
+  <main>
+    <section id="top" class="frame hero">
+      <div class="hero-copy">
+        <h1>One layer knows the attacks.<br>The other knows your network.</h1>
+        <p class="ar">A classifier names the attacks it was trained on. An autoencoder trained only on
+          normal traffic flags anything that looks different, so new attacks still raise an alert.</p>
+      </div>
+      <ul class="legend">
+        <li><i class="sw normal"></i>normal</li>
+        <li><i class="sw probe"></i>scan / probe</li>
+        <li><i class="sw attack"></i>known attack</li>
+        <li><i class="sw unknown"></i>unknown anomaly</li>
+      </ul>
+    </section>
 
-<main>
+    <section id="results" class="frame">
+      <div class="section-head">
+        <h2>Results</h2>
+        <p class="ar">Every number is from test data the model did not see during training.</p>
+      </div>
+      <div class="tabs" role="tablist" id="run-tabs"></div>
+      <div class="form-row" style="margin-top:14px">
+        <label for="split">Test set</label>
+        <select id="split"></select>
+        <span class="verdict-meta" id="run-meta"></span>
+      </div>
+      <div class="kpis" id="kpis"></div>
+      <div class="grid-2">
+        <figure class="cell">
+          <figcaption class="cell-title">Detection by mode</figcaption>
+          <div id="table-modes"></div>
+        </figure>
+        <figure class="cell">
+          <figcaption class="cell-title">Detection per attack family</figcaption>
+          <div id="table-cats"></div>
+        </figure>
+      </div>
+      <div class="figs" id="figs"></div>
+    </section>
 
-<section id="results">
-  <h2>Results</h2>
-  <p>Experiment:
-    <select id="run"></select>
-    <select id="split"></select>
-  </p>
-  <div id="results-body"></div>
-</section>
+    <section id="analyze" class="frame">
+      <div class="section-head">
+        <h2>Analyze a capture</h2>
+        <p class="ar">Pick one of our recorded captures, or upload a .pcap from Wireshark or tcpdump.</p>
+      </div>
+      <div class="analyze-controls">
+        <div class="samples" id="samples"></div>
+        <label class="drop">
+          <input type="file" id="upload" accept=".pcap,.pcapng">
+          <span>Choose a .pcap file</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="custom" checked>
+          <span>Use the baseline trained on this laptop's normal traffic</span>
+        </label>
+      </div>
+      <div id="analyze-out" class="analyze-out"></div>
+    </section>
 
-<section id="analyze">
-  <h2>Analyze a capture</h2>
-  <p>
-    <select id="sample"></select>
-    <button id="analyze-btn">Analyze</button>
-    or upload: <input type="file" id="upload" accept=".pcap,.pcapng">
-  </p>
-  <p><label><input type="checkbox" id="custom" checked> use the baseline trained on this laptop</label></p>
-  <div id="analyze-body"></div>
-</section>
+    <section id="live" class="frame">
+      <div class="section-head">
+        <h2>Live detection</h2>
+        <p class="ar">Watch the network card and launch real attacks (nmap, HTTP flood) against this machine only.</p>
+      </div>
+      <div class="switches">
+        <button class="switch" type="button" role="switch" aria-checked="false" id="monitor-btn">
+          <i></i><span><b>Monitor</b><small>interface
+            <select id="iface"><option>lo0</option><option>en0</option></select></small></span>
+        </button>
+        <button class="switch" type="button" role="switch" aria-checked="false" id="browse">
+          <i></i><span><b>Normal browsing</b><small>background requests to the victim server</small></span>
+        </button>
+        <button class="switch danger" type="button" role="switch" aria-checked="false" id="auto">
+          <i></i><span><b>Attack mode</b><small>runs the attacks one after another</small></span>
+        </button>
+      </div>
+      <p class="root-note" id="root-note" hidden></p>
+      <div class="duel">
+        <div class="duel-ids">
+          <div class="duel-head"><b>Detector</b><span>3 second batches</span></div>
+          <div class="tape-stats">
+            <div class="stat"><span class="stat-n" id="c-total">0</span><span class="stat-l">connections</span></div>
+            <div class="stat"><span class="stat-n" id="c-normal">0</span><span class="stat-l">normal</span></div>
+            <div class="stat"><span class="stat-n" id="c-alerts">0</span><span class="stat-l">alerts</span></div>
+            <div class="stat probe"><span class="stat-n" id="c-probe">0</span><span class="stat-l">probe</span></div>
+            <div class="stat unknown"><span class="stat-n" id="c-unknown">0</span><span class="stat-l">unknown</span></div>
+          </div>
+          <ol class="feed" id="live-feed" style="margin:0 14px"></ol>
+        </div>
+        <div class="duel-term">
+          <div class="duel-head"><b>Attacker</b><span>127.0.0.1 only</span></div>
+          <div class="term" id="terminal"></div>
+          <div class="quick">
+            <button class="btn ghost cmd" type="button" data-cmd="scan">scan</button>
+            <button class="btn ghost cmd" type="button" data-cmd="service-scan">service-scan</button>
+            <button class="btn ghost cmd" type="button" data-cmd="flood">flood</button>
+            <button class="btn ghost cmd" type="button" data-cmd="help">help</button>
+          </div>
+          <form class="term-input" id="cmd-form">
+            <label for="cmd">attacker$</label>
+            <input id="cmd" autocomplete="off" placeholder="type help">
+          </form>
+        </div>
+      </div>
+    </section>
 
-<section id="live">
-  <h2>Live detection</h2>
-  <p id="root-note" class="small"></p>
-  <p>
-    <button id="monitor-btn">Start monitoring</button>
-    interface <select id="iface"><option>lo0</option><option>en0</option></select>
-    <label><input type="checkbox" id="browse"> normal browsing</label>
-    <label><input type="checkbox" id="auto"> attack mode</label>
-  </p>
-  <table class="counts">
-    <tr><th>connections</th><th>normal</th><th>alerts</th><th>Probe</th><th>Unknown-Anomaly</th></tr>
-    <tr><td id="c-total">0</td><td id="c-normal">0</td><td id="c-alerts">0</td><td id="c-probe">0</td><td id="c-unknown">0</td></tr>
-  </table>
-  <p>
-    <button class="cmd" data-cmd="scan">scan</button>
-    <button class="cmd" data-cmd="service-scan">service-scan</button>
-    <button class="cmd" data-cmd="flood">flood</button>
-    <button class="cmd" data-cmd="help">help</button>
-  </p>
-  <pre id="terminal"></pre>
-  <form id="cmd-form"><span>attacker$</span> <input id="cmd" autocomplete="off" placeholder="type help"></form>
-</section>
+    <section id="lab" class="frame">
+      <div class="section-head">
+        <h2>Test a connection</h2>
+        <p class="ar">Change a few values of one connection and see what the full NSL-KDD model decides.</p>
+      </div>
+      <div class="lab">
+        <div class="lab-inputs">
+          <div class="presets">
+            <button class="btn ghost preset" type="button" data-preset="normal">normal web</button>
+            <button class="btn ghost preset" type="button" data-preset="synflood">SYN flood</button>
+            <button class="btn ghost preset" type="button" data-preset="scan">port scan</button>
+          </div>
+          <form id="lab-form" class="lab-form">
+            <div class="control"><label>flag</label><select name="flag">
+              <option>SF</option><option>S0</option><option>REJ</option><option>RSTO</option>
+              <option>RSTR</option><option>SH</option><option>S1</option><option>OTH</option></select></div>
+            <div class="control"><label>service</label><input name="service" value="http"></div>
+            <div class="control"><label>src_bytes</label><input name="src_bytes" type="number" value="250"></div>
+            <div class="control"><label>count</label><input name="count" type="number" value="5"></div>
+            <div class="control"><label>serror_rate</label><input name="serror_rate" type="number" step="0.01" value="0"></div>
+            <div class="control"><label>rerror_rate</label><input name="rerror_rate" type="number" step="0.01" value="0"></div>
+            <div class="control"><label>dst_host_count</label><input name="dst_host_count" type="number" value="50"></div>
+            <div class="control"><label>dst_host_serror_rate</label><input name="dst_host_serror_rate" type="number" step="0.01" value="0"></div>
+            <button class="btn" type="submit">Check</button>
+          </form>
+        </div>
+        <div class="lab-verdict" id="lab-body"></div>
+      </div>
+    </section>
+  </main>
 
-<section id="lab">
-  <h2>Test a connection</h2>
-  <p>Change a few values of one connection (NSL-KDD full model) and check the result.</p>
-  <p>
-    <button class="preset" data-preset="normal">normal web</button>
-    <button class="preset" data-preset="synflood">SYN flood</button>
-    <button class="preset" data-preset="scan">port scan</button>
-  </p>
-  <form id="lab-form">
-    <label>flag <select name="flag">
-      <option>SF</option><option>S0</option><option>REJ</option><option>RSTO</option>
-      <option>RSTR</option><option>SH</option><option>S1</option><option>OTH</option></select></label>
-    <label>service <input name="service" value="http"></label>
-    <label>src_bytes <input name="src_bytes" type="number" value="250"></label>
-    <label>count <input name="count" type="number" value="5"></label>
-    <label>serror_rate <input name="serror_rate" type="number" step="0.01" value="0"></label>
-    <label>rerror_rate <input name="rerror_rate" type="number" step="0.01" value="0"></label>
-    <label>dst_host_count <input name="dst_host_count" type="number" value="50"></label>
-    <label>dst_host_serror_rate <input name="dst_host_serror_rate" type="number" step="0.01" value="0"></label>
-    <button type="submit">Check</button>
-  </form>
-  <div id="lab-body"></div>
-</section>
+  <footer class="frame footer">
+    <p>Trained and tested on NSL-KDD and CIC-IDS2017, and on captures recorded on this machine. Runs offline.</p>
+  </footer>
 
-</main>
-
-<script src="/static/main.js"></script>
+  <script src="/static/main.js"></script>
 </body>
 </html>

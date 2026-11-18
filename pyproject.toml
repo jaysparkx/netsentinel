@@ -31,7 +31,7 @@ netsentinel = "netsentinel.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"netsentinel.web" = ["static/*"]
+"netsentinel.web" = ["static/*", "static/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
