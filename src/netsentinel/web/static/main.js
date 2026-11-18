@@ -340,7 +340,7 @@ function showConfusion() {
   const pos = m.tp + m.fn, neg = m.fp + m.tn;
   const cell = (v, total, good) => {
     const share = total ? v / total : 0;
-    const bg = good ? `rgba(79,179,232,${0.08 + share * 0.5})` : `rgba(229,83,75,${0.06 + share * 0.6})`;
+    const bg = good ? `rgba(63,224,208,${0.06 + share * 0.4})` : `rgba(255,77,94,${0.06 + share * 0.5})`;
     return `<div class="cell" style="background:${bg}">${n(v)}<small>${pct(share)} of row</small></div>`;
   };
   $("r-cm").innerHTML = `<div class="cm">
@@ -574,6 +574,7 @@ function startMonitor() {
   source = new EventSource(url);
   $("monitor-btn").textContent = "Stop";
   $("monitor-btn").className = "btn stop";
+  document.body.classList.add("running");
   $("sensor").textContent = "starting...";
   source.addEventListener("start", function (e) {
     const s = JSON.parse(e.data);
@@ -603,6 +604,7 @@ function stopMonitor() {
   source = null;
   $("monitor-btn").textContent = "Start";
   $("monitor-btn").className = "btn";
+  document.body.classList.remove("running");
   $("sensor").textContent = "sensor idle";
   drawMonitor();
 }
